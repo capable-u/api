@@ -39,4 +39,4 @@ jobs:
           ruff check .
 
       - name: Validate Docker build
-        run: docker build -t capable-u-api-dev ./api
+        run: docker build -t capable-u-api-dev .
