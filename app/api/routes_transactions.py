@@ -24,7 +24,7 @@ def list_transactions(db: Session = Depends(get_db)):
             "direction": tx.direction,
             "counterparty": tx.counterparty,
             "raw_description": tx.raw_description,
-            "category": tx.category,
+            "category": tx.category_id,
             "confidence": float(tx.confidence) if tx.confidence is not None else None,
         }
         for tx in items

@@ -8,6 +8,7 @@ from app.models.import_job import ImportJob
 from app.models.transaction import Transaction
 from app.services.pdf_extract import extract_text_with_pypdf
 from app.services.transaction_parser import parse_transactions_from_text
+from app.services.fingerprint import build_transaction_fingerprint
 from app.services.llm_client import LLMClientError
 
 router = APIRouter(prefix="/imports", tags=["imports"])
@@ -51,8 +52,15 @@ async def upload_statement(
                 direction=item.direction,
                 counterparty=item.counterparty,
                 raw_description=item.raw_description,
-                category=item.category,
+                category_id=item.category_id,
                 confidence=item.confidence,
+                fingerprint=build_transaction_fingerprint(
+                    booking_date=item.booking_date,
+                    amount=item.amount,
+                    direction=item.direction,
+                    raw_description=item.raw_description,
+                    counterparty=item.counterparty,
+                ),
             )
             db.add(tx)
 
@@ -65,11 +73,15 @@ async def upload_statement(
         }
 
     except LLMClientError as e:
+        db.rollback()
         job.status = "llm_failed"
+        db.add(job)
         db.commit()
         raise HTTPException(status_code=502, detail=str(e)) from e
 
     except Exception as e:
+        db.rollback()
         job.status = "failed"
+        db.add(job)
         db.commit()
         raise HTTPException(status_code=500, detail=f"Import failed: {e}") from e

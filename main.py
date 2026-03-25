@@ -1,11 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.db import Base, engine
 from app.api.routes_upload import router as upload_router
 from app.api.routes_transactions import router as transactions_router
+from app.api.routes_categories import router as categories_router
 
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Budget MVP")
 
@@ -19,6 +18,7 @@ app.add_middleware(
 
 app.include_router(upload_router)
 app.include_router(transactions_router)
+app.include_router(categories_router)
 
 
 @app.get("/health")
