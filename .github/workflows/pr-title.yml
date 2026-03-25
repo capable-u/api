@@ -1,0 +1,16 @@
+name: PR Title Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "PR title: $PR_TITLE"
+          echo "$PR_TITLE" | grep -E '^(feat|fix|chore|docs|refactor|test|build|ci|perf|revert)(\([a-z0-9._/-]+\))?!?: .+$'
