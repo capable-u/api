@@ -1,0 +1,38 @@
+from datetime import date
+from decimal import Decimal
+from pydantic import BaseModel, Field
+
+
+ALLOWED_CATEGORIES = [
+    "salary",
+    "rent",
+    "groceries",
+    "transport",
+    "utilities",
+    "insurance",
+    "health",
+    "shopping",
+    "subscriptions",
+    "restaurants",
+    "entertainment",
+    "transfer",
+    "cash_withdrawal",
+    "tax",
+    "other",
+]
+
+
+class ParsedTransaction(BaseModel):
+    booking_date: date
+    value_date: date | None = None
+    amount: Decimal
+    currency: str = "EUR"
+    direction: str = Field(pattern="^(income|expense)$")
+    counterparty: str | None = None
+    raw_description: str
+    category: str
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class ParsedTransactionsResponse(BaseModel):
+    transactions: list[ParsedTransaction]

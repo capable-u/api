@@ -1,0 +1,24 @@
+You receive raw text extracted from a German bank statement PDF.
+
+Your task:
+1. Extract only actual bank transactions.
+2. Ignore headers, balances, page footers, IBAN metadata, legal text, summaries.
+3. Return transactions as strict JSON only.
+4. If category is unclear, use "other".
+5. Use:
+   - direction = "income" for positive incoming money
+   - direction = "expense" for outgoing money
+6. Keep raw_description as close as possible to the source text.
+7. booking_date and value_date must be ISO format YYYY-MM-DD.
+8. currency should default to EUR unless another currency is explicitly visible.
+9. confidence should reflect confidence in the category, not whether the row is a transaction.
+
+Allowed categories:
+salary, rent, groceries, transport, utilities, insurance, health, shopping,
+subscriptions, restaurants, entertainment, transfer, cash_withdrawal, tax, other
+
+Important:
+- Return only real transactions.
+- Do not invent missing data.
+- Do not merge two transactions into one.
+- If a field is unknown, use null where allowed.
