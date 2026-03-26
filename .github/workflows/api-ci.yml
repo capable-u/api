@@ -5,19 +5,16 @@ on:
     paths:
       - "api/**"
       - ".github/workflows/api-ci.yml"
-      - "docker-compose.yml"
   push:
     branches:
       - main
     paths:
       - "api/**"
       - ".github/workflows/api-ci.yml"
-      - "docker-compose.yml"
 
 jobs:
   api-ci:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,14 +26,6 @@ jobs:
           cache: "pip"
           cache-dependency-path: requirements.txt
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Ruff
-        run: |
-          ruff check .
-
-      - name: Validate Docker build
-        run: docker build -t capable-u-api-dev .
+      - run: python -m pip install --upgrade pip && pip install -r requirements.txt
+      - run: ruff check .
+      - run: docker build -t capable-u-api-dev .
