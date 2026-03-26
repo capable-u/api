@@ -10,16 +10,12 @@ router = APIRouter(prefix="/categories", tags=["categories"])
 
 @router.get("")
 def list_categories(db: Session = Depends(get_db)):
-    items = db.execute(
-        select(Category).where(Category.is_active.is_(True)).order_by(Category.name.asc())
-    ).scalars().all()
+    items = db.execute(select(Category).order_by(Category.name.asc())).scalars().all()
 
     return [
         {
             "id": item.id,
-            "slug": item.slug,
             "name": item.name,
-            "color": item.color,
         }
         for item in items
     ]

@@ -5,34 +5,32 @@ from app.models.category import Category
 
 
 DEFAULT_CATEGORIES = [
-    {"slug": "salary", "name": "Salary"},
-    {"slug": "rent", "name": "Rent"},
-    {"slug": "groceries", "name": "Groceries"},
-    {"slug": "transport", "name": "Transport"},
-    {"slug": "utilities", "name": "Utilities"},
-    {"slug": "insurance", "name": "Insurance"},
-    {"slug": "health", "name": "Health"},
-    {"slug": "shopping", "name": "Shopping"},
-    {"slug": "subscriptions", "name": "Subscriptions"},
-    {"slug": "restaurants", "name": "Restaurants"},
-    {"slug": "entertainment", "name": "Entertainment"},
-    {"slug": "transfer", "name": "Transfer"},
-    {"slug": "cash_withdrawal", "name": "Cash Withdrawal"},
-    {"slug": "tax", "name": "Tax"},
-    {"slug": "other", "name": "Other"},
+    "Salary",
+    "Rent",
+    "Groceries",
+    "Transport",
+    "Utilities",
+    "Insurance",
+    "Health",
+    "Shopping",
+    "Subscriptions",
+    "Restaurants",
+    "Entertainment",
+    "Transfer",
+    "Cash Withdrawal",
+    "Tax",
+    "Other",
 ]
 
 
 def seed_categories() -> None:
     with SessionLocal() as db:
-        existing_slugs = set(
-            db.execute(select(Category.slug)).scalars().all()
-        )
+        existing_names = set(db.execute(select(Category.name)).scalars().all())
 
         to_create = [
-            Category(slug=item["slug"], name=item["name"])
-            for item in DEFAULT_CATEGORIES
-            if item["slug"] not in existing_slugs
+            Category(name=name)
+            for name in DEFAULT_CATEGORIES
+            if name not in existing_names
         ]
 
         if to_create:
