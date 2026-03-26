@@ -1,3 +1,4 @@
+from sqlalchemy import inspect
 from sqlalchemy import select
 
 from app.core.db import SessionLocal
@@ -25,6 +26,9 @@ DEFAULT_CATEGORIES = [
 
 def seed_categories() -> None:
     with SessionLocal() as db:
+        if not inspect(db.get_bind()).has_table(Category.__tablename__):
+            return
+
         existing_names = set(db.execute(select(Category.name)).scalars().all())
 
         to_create = [
