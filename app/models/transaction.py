@@ -30,6 +30,11 @@ class Transaction(Base):
 
     review_status: Mapped[str] = mapped_column(String(20), default="pending", index=True, nullable=False)
     duplicate_status: Mapped[str] = mapped_column(String(30), default="unique", index=True, nullable=False)
+    duplicate_of_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("transactions.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    duplicate_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    duplicate_score: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
 
     fingerprint: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
 
