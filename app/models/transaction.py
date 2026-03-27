@@ -28,7 +28,6 @@ class Transaction(Base):
 
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
 
-    review_status: Mapped[str] = mapped_column(String(20), default="pending", index=True, nullable=False)
     duplicate_status: Mapped[str] = mapped_column(String(30), default="unique", index=True, nullable=False)
     duplicate_of_transaction_id: Mapped[int | None] = mapped_column(
         ForeignKey("transactions.id", ondelete="SET NULL"), index=True, nullable=True

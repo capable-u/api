@@ -16,11 +16,6 @@ class Direction(str, Enum):
     expense = "expense"
 
 
-class ReviewStatus(str, Enum):
-    pending = "pending"
-    reviewed = "reviewed"
-    ignored = "ignored"
-
 
 class DuplicateStatus(str, Enum):
     unique = "unique"
