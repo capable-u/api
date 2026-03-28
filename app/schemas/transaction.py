@@ -18,3 +18,15 @@ class ParsedTransaction(BaseModel):
 
 class ParsedTransactionsResponse(BaseModel):
     transactions: list[ParsedTransaction]
+
+
+class TransactionUpdateRequest(BaseModel):
+    booking_date: date | None = None
+    value_date: date | None = None
+    amount: Decimal | None = None
+    currency: str | None = None
+    direction: str | None = Field(default=None, pattern="^(income|expense)$")
+    counterparty: str | None = None
+    raw_description: str | None = None
+    category_id: int | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
