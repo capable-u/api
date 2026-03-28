@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.config import settings
+from app.models.enums import DuplicateStatus
 from app.models.import_job import ImportJob
 from app.models.transaction import Transaction
 from app.services.pdf_extract import extract_text_with_pypdf
@@ -71,7 +72,7 @@ async def upload_statement(
                 fingerprint=fingerprint,
             )
 
-            if duplicate_match.status.value == "duplicate_confirmed":
+            if duplicate_match.status.value == DuplicateStatus.duplicate_confirmed.value:
                 duplicate_transactions += 1
                 continue
 
@@ -96,9 +97,9 @@ async def upload_statement(
             db.add(tx)
             db.flush()
 
-            if duplicate_match.status.value == "unique":
+            if duplicate_match.status.value == DuplicateStatus.unique.value:
                 new_transactions += 1
-            elif duplicate_match.status.value == "possible_duplicate":
+            elif duplicate_match.status.value == DuplicateStatus.possible_duplicate.value:
                 needs_review_count += 1
 
         job.new_transactions = new_transactions

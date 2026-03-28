@@ -77,10 +77,17 @@ def _probable_similarity_score(candidate: Transaction, raw_description: str, cou
     return _quantize_score(weighted)
 
 
-def _find_exact_duplicate(db: Session, fingerprint: str) -> Transaction | None:
+def _find_exact_duplicate(
+        db: Session,
+        fingerprint: str,
+        exclude_transaction_id: int | None = None,
+) -> Transaction | None:
+    query = select(Transaction).where(Transaction.fingerprint == fingerprint)
+    if exclude_transaction_id is not None:
+        query = query.where(Transaction.id != exclude_transaction_id)
+
     return db.execute(
-        select(Transaction)
-        .where(Transaction.fingerprint == fingerprint)
+        query
         .order_by(Transaction.id.asc())
         .limit(1)
     ).scalar_one_or_none()
@@ -92,27 +99,30 @@ def _find_probable_candidates(
         amount: Decimal,
         currency: str,
         direction: str,
+        exclude_transaction_id: int | None = None,
 ) -> list[Transaction]:
     from_date = booking_date - timedelta(days=PROBABLE_DATE_WINDOW_DAYS)
     to_date = booking_date + timedelta(days=PROBABLE_DATE_WINDOW_DAYS)
 
+    conditions = [
+        Transaction.amount == amount,
+        Transaction.currency == currency,
+        Transaction.direction == direction,
+        Transaction.booking_date >= from_date,
+        Transaction.booking_date <= to_date,
+        Transaction.duplicate_status.in_(
+            [
+                DuplicateStatus.unique.value,
+                DuplicateStatus.possible_duplicate.value,
+            ]
+        ),
+    ]
+    if exclude_transaction_id is not None:
+        conditions.append(Transaction.id != exclude_transaction_id)
+
     return db.execute(
         select(Transaction)
-        .where(
-            and_(
-                Transaction.amount == amount,
-                Transaction.currency == currency,
-                Transaction.direction == direction,
-                Transaction.booking_date >= from_date,
-                Transaction.booking_date <= to_date,
-                Transaction.duplicate_status.in_(
-                    [
-                        DuplicateStatus.unique.value,
-                        DuplicateStatus.possible_duplicate.value,
-                    ]
-                ),
-            )
-        )
+        .where(and_(*conditions))
         .order_by(Transaction.booking_date.desc(), Transaction.id.desc())
         .limit(MAX_PROBABLE_CANDIDATES)
     ).scalars().all()
@@ -127,8 +137,13 @@ def detect_duplicate_match(
         raw_description: str,
         counterparty: str | None,
         fingerprint: str,
+        exclude_transaction_id: int | None = None,
 ) -> DuplicateMatch:
-    exact = _find_exact_duplicate(db, fingerprint=fingerprint)
+    exact = _find_exact_duplicate(
+        db,
+        fingerprint=fingerprint,
+        exclude_transaction_id=exclude_transaction_id,
+    )
     if exact:
         return DuplicateMatch(
             status=DuplicateStatus.duplicate_confirmed,
@@ -143,6 +158,7 @@ def detect_duplicate_match(
         amount=amount,
         currency=currency,
         direction=direction,
+        exclude_transaction_id=exclude_transaction_id,
     )
     if not candidates:
         return DuplicateMatch(status=DuplicateStatus.unique)

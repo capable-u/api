@@ -7,6 +7,7 @@ from app.models.enums import DuplicateStatus
 from app.models.import_job import ImportJob
 from app.models.transaction import Transaction
 from app.schemas.transaction import TransactionUpdateRequest
+from app.services.duplicate_detector import detect_duplicate_match
 from app.services.fingerprint import build_transaction_fingerprint, normalize_text
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -70,7 +71,7 @@ def _serialize_transaction(tx: Transaction) -> dict:
         "counterparty": tx.counterparty,
         "raw_description": tx.raw_description,
         "normalized_description": tx.normalized_description,
-        "category": tx.category_id,
+        "category_id": tx.category_id,
         "confidence": float(tx.confidence) if tx.confidence is not None else None,
         "duplicate_status": tx.duplicate_status,
         "duplicate_of_transaction_id": tx.duplicate_of_transaction_id,
@@ -81,12 +82,12 @@ def _serialize_transaction(tx: Transaction) -> dict:
 
 @router.get("")
 def list_transactions(
-        duplicate_status: str | None = Query(default=None),
+        duplicate_status: DuplicateStatus | None = Query(default=None),
         db: Session = Depends(get_db),
 ):
     query = select(Transaction)
     if duplicate_status:
-        query = query.where(Transaction.duplicate_status == duplicate_status)
+        query = query.where(Transaction.duplicate_status == duplicate_status.value)
 
     items = db.execute(
         query.order_by(Transaction.booking_date.desc(), Transaction.id.desc())
@@ -103,7 +104,7 @@ def review_queue(
     items = db.execute(
         select(Transaction)
         .where(
-            Transaction.duplicate_status == "possible_duplicate",
+            Transaction.duplicate_status == DuplicateStatus.possible_duplicate.value,
         )
         .order_by(Transaction.booking_date.desc(), Transaction.id.desc())
         .limit(limit)
@@ -193,6 +194,21 @@ def update_transaction(
             raw_description=tx.raw_description,
             counterparty=tx.counterparty,
         )
+        duplicate_match = detect_duplicate_match(
+            db=db,
+            booking_date=tx.booking_date,
+            amount=tx.amount,
+            currency=tx.currency,
+            direction=tx.direction,
+            raw_description=tx.raw_description,
+            counterparty=tx.counterparty,
+            fingerprint=tx.fingerprint,
+            exclude_transaction_id=tx.id,
+        )
+        tx.duplicate_status = duplicate_match.status.value
+        tx.duplicate_of_transaction_id = duplicate_match.duplicate_of_transaction_id
+        tx.duplicate_reason = duplicate_match.duplicate_reason
+        tx.duplicate_score = duplicate_match.duplicate_score
 
     db.add(tx)
     db.commit()
