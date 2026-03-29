@@ -12,11 +12,21 @@ from app.services.transaction_parser import parse_transactions_from_text
 from app.services.duplicate_detector import detect_duplicate_match
 from app.services.fingerprint import build_transaction_fingerprint, normalize_text
 from app.services.llm_client import LLMClientError
+from app.schemas.common import ErrorResponse
+from app.schemas.upload import UploadStatementResponse
 
 router = APIRouter(prefix="/imports", tags=["imports"])
 
 
-@router.post("")
+@router.post(
+    "",
+    response_model=UploadStatementResponse,
+    responses={
+        400: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+        502: {"model": ErrorResponse},
+    },
+)
 async def upload_statement(
         file: UploadFile = File(...),
         db: Session = Depends(get_db),

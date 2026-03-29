@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes_upload import router as upload_router
 from app.api.routes_transactions import router as transactions_router
 from app.api.routes_categories import router as categories_router
+from app.schemas.common import HealthResponse
 
 
 app = FastAPI(title="Budget MVP")
@@ -21,6 +22,6 @@ app.include_router(transactions_router)
 app.include_router(categories_router)
 
 
-@app.get("/health")
-def health():
+@app.get("/health", response_model=HealthResponse)
+def health() -> HealthResponse:
     return {"status": "ok"}

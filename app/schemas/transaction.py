@@ -1,7 +1,6 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pydantic import BaseModel, Field
-
 
 
 class ParsedTransaction(BaseModel):
@@ -30,3 +29,34 @@ class TransactionUpdateRequest(BaseModel):
     raw_description: str | None = None
     category_id: int | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class TransactionSummaryResponse(BaseModel):
+    id: int
+    booking_date: date
+    value_date: date | None = None
+    amount: float
+    currency: str
+    direction: str
+    counterparty: str | None = None
+    raw_description: str
+    normalized_description: str
+    category_id: int
+    confidence: float | None = None
+    duplicate_status: str
+    duplicate_of_transaction_id: int | None = None
+    duplicate_reason: str | None = None
+    duplicate_score: float | None = None
+
+
+class TransactionDetailResponse(TransactionSummaryResponse):
+    import_job_id: int
+    fingerprint: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class DeleteTransactionResponse(BaseModel):
+    id: int
+    deleted: bool
+    action: str

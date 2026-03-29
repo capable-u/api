@@ -6,7 +6,13 @@ from app.core.db import get_db
 from app.models.enums import DuplicateStatus
 from app.models.import_job import ImportJob
 from app.models.transaction import Transaction
-from app.schemas.transaction import TransactionUpdateRequest
+from app.schemas.common import ErrorResponse
+from app.schemas.transaction import (
+    DeleteTransactionResponse,
+    TransactionDetailResponse,
+    TransactionSummaryResponse,
+    TransactionUpdateRequest,
+)
 from app.services.duplicate_detector import detect_duplicate_match
 from app.services.fingerprint import build_transaction_fingerprint, normalize_text
 
@@ -80,7 +86,7 @@ def _serialize_transaction(tx: Transaction) -> dict:
     }
 
 
-@router.get("")
+@router.get("", response_model=list[TransactionSummaryResponse])
 def list_transactions(
         duplicate_status: DuplicateStatus | None = Query(default=None),
         db: Session = Depends(get_db),
@@ -96,7 +102,7 @@ def list_transactions(
     return [_serialize_transaction(tx) for tx in items]
 
 
-@router.get("/review-queue")
+@router.get("/review-queue", response_model=list[TransactionSummaryResponse])
 def review_queue(
         limit: int = Query(default=50, ge=1, le=500),
         db: Session = Depends(get_db),
@@ -113,7 +119,11 @@ def review_queue(
     return [_serialize_transaction(tx) for tx in items]
 
 
-@router.get("/{transaction_id}")
+@router.get(
+    "/{transaction_id}",
+    response_model=TransactionDetailResponse,
+    responses={404: {"model": ErrorResponse}},
+)
 def get_transaction_by_id(
         transaction_id: int,
         db: Session = Depends(get_db),
@@ -122,7 +132,11 @@ def get_transaction_by_id(
     return _serialize_transaction_full(tx)
 
 
-@router.post("/{transaction_id}/mark-unique")
+@router.post(
+    "/{transaction_id}/mark-unique",
+    response_model=TransactionSummaryResponse,
+    responses={404: {"model": ErrorResponse}},
+)
 def mark_transaction_as_unique(
         transaction_id: int,
         db: Session = Depends(get_db),
@@ -151,7 +165,11 @@ def mark_transaction_as_unique(
     return _serialize_transaction(tx)
 
 
-@router.patch("/{transaction_id}")
+@router.patch(
+    "/{transaction_id}",
+    response_model=TransactionDetailResponse,
+    responses={404: {"model": ErrorResponse}},
+)
 def update_transaction(
         transaction_id: int,
         payload: TransactionUpdateRequest,
@@ -217,7 +235,11 @@ def update_transaction(
     return _serialize_transaction_full(tx)
 
 
-@router.delete("/{transaction_id}")
+@router.delete(
+    "/{transaction_id}",
+    response_model=DeleteTransactionResponse,
+    responses={404: {"model": ErrorResponse}},
+)
 def delete_transaction(
         transaction_id: int,
         db: Session = Depends(get_db),
