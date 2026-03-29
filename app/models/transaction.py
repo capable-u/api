@@ -16,7 +16,6 @@ class Transaction(Base):
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), index=True, nullable=True)
 
     booking_date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
-    value_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(10), default="EUR", nullable=False)

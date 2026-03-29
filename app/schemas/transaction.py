@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 
 class ParsedTransaction(BaseModel):
     booking_date: date
-    value_date: date | None = None
     amount: Decimal
     currency: str = "EUR"
     direction: str = Field(pattern="^(income|expense)$")
@@ -21,7 +20,6 @@ class ParsedTransactionsResponse(BaseModel):
 
 class TransactionUpdateRequest(BaseModel):
     booking_date: date | None = None
-    value_date: date | None = None
     amount: Decimal | None = None
     currency: str | None = None
     direction: str | None = Field(default=None, pattern="^(income|expense)$")
@@ -34,7 +32,6 @@ class TransactionUpdateRequest(BaseModel):
 class TransactionSummaryResponse(BaseModel):
     id: int
     booking_date: date
-    value_date: date | None = None
     amount: float
     currency: str
     direction: str

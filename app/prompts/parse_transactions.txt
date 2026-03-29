@@ -9,7 +9,7 @@ Your task:
    - direction = "income" for positive incoming money
    - direction = "expense" for outgoing money
 6. Keep raw_description as close as possible to the source text.
-7. booking_date and value_date must be ISO format YYYY-MM-DD.
+7. booking_date must be ISO format YYYY-MM-DD.
 8. currency should default to EUR unless another currency is explicitly visible.
 9. confidence should reflect confidence in the category, not whether the row is a transaction.
 

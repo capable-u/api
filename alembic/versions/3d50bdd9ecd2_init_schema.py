@@ -47,7 +47,6 @@ def upgrade() -> None:
     sa.Column('import_job_id', sa.Integer(), nullable=False),
     sa.Column('category_id', sa.Integer(), nullable=True),
     sa.Column('booking_date', sa.Date(), nullable=False),
-    sa.Column('value_date', sa.Date(), nullable=True),
     sa.Column('amount', sa.Numeric(precision=12, scale=2), nullable=False),
     sa.Column('currency', sa.String(length=10), nullable=False),
     sa.Column('direction', sa.String(length=10), nullable=False),

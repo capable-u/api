@@ -70,7 +70,6 @@ def _serialize_transaction(tx: Transaction) -> dict:
     return {
         "id": tx.id,
         "booking_date": tx.booking_date.isoformat(),
-        "value_date": tx.value_date.isoformat() if tx.value_date else None,
         "amount": float(tx.amount),
         "currency": tx.currency,
         "direction": tx.direction,
