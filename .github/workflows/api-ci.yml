@@ -2,15 +2,9 @@ name: API CI
 
 on:
   pull_request:
-    paths:
-      - "api/**"
-      - ".github/workflows/api-ci.yml"
   push:
     branches:
       - main
-    paths:
-      - "api/**"
-      - ".github/workflows/api-ci.yml"
 
 jobs:
   api-ci:
@@ -29,3 +23,4 @@ jobs:
       - run: python -m pip install --upgrade pip && pip install -r requirements.txt
       - run: ruff check .
       - run: docker build -t capable-u-api-dev .
+      - run: docker build -f Dockerfile.prod -t capable-u-api-prod .
