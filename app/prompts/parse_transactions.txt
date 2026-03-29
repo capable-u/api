@@ -4,7 +4,7 @@ Your task:
 1. Extract only actual bank transactions.
 2. Ignore headers, balances, page footers, IBAN metadata, legal text, summaries.
 3. Return transactions as strict JSON only.
-4. If category is unclear, use "other".
+4. If category is unclear, use the category_id for "Other" from the provided ID list.
 5. Use:
    - direction = "income" for positive incoming money
    - direction = "expense" for outgoing money
@@ -13,9 +13,8 @@ Your task:
 8. currency should default to EUR unless another currency is explicitly visible.
 9. confidence should reflect confidence in the category, not whether the row is a transaction.
 
-Allowed categories:
-salary, rent, groceries, transport, utilities, insurance, health, shopping,
-subscriptions, restaurants, entertainment, transfer, cash_withdrawal, tax, other
+10. category_id must be one of the IDs from the "ALLOWED CATEGORIES WITH IDS" list.
+11. Never invent category IDs.
 
 Important:
 - Return only real transactions.

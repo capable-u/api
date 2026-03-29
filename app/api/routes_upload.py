@@ -1,7 +1,9 @@
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.category import Category
 from app.core.db import get_db
 from app.core.config import settings
 from app.models.enums import DuplicateStatus
@@ -16,6 +18,8 @@ from app.schemas.common import ErrorResponse
 from app.schemas.upload import UploadStatementResponse
 
 router = APIRouter(prefix="/imports", tags=["imports"])
+
+CATEGORY_CONFIDENCE_PENALTY = 0.35
 
 
 @router.post(
@@ -47,12 +51,22 @@ async def upload_statement(
     db.refresh(job)
 
     try:
+        categories = db.execute(select(Category).order_by(Category.id.asc())).scalars().all()
+        if not categories:
+            raise HTTPException(status_code=500, detail="Categories are not initialized")
+
+        category_pairs = [(item.id, item.name) for item in categories]
+        valid_category_ids = {item.id for item in categories}
+        other_category = next((item for item in categories if item.name.strip().lower() == "other"), None)
+        if other_category is None:
+            raise HTTPException(status_code=500, detail='Category "Other" is not configured')
+
         raw_text = extract_text_with_pypdf(str(file_path))
         job.raw_text = raw_text
         job.status = "parsed_text"
         db.commit()
 
-        parsed = await parse_transactions_from_text(raw_text)
+        parsed = await parse_transactions_from_text(raw_text, categories=category_pairs)
         job.status = "parsed_transactions"
         job.total_transactions = len(parsed.transactions)
 
@@ -61,6 +75,12 @@ async def upload_statement(
         needs_review_count = 0
 
         for item in parsed.transactions:
+            category_id = item.category_id
+            confidence = float(item.confidence)
+            if category_id not in valid_category_ids:
+                category_id = other_category.id
+                confidence = max(0.0, confidence - CATEGORY_CONFIDENCE_PENALTY)
+
             normalized_currency = item.currency.strip().upper()
             normalized_direction = item.direction.strip().lower()
             fingerprint = build_transaction_fingerprint(
@@ -96,8 +116,8 @@ async def upload_statement(
                 counterparty=item.counterparty,
                 raw_description=item.raw_description,
                 normalized_description=normalize_text(item.raw_description),
-                category_id=item.category_id,
-                confidence=item.confidence,
+                category_id=category_id,
+                confidence=confidence,
                 duplicate_status=duplicate_match.status.value,
                 duplicate_of_transaction_id=duplicate_match.duplicate_of_transaction_id,
                 duplicate_reason=duplicate_match.duplicate_reason,
