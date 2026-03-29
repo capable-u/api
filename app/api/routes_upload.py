@@ -22,6 +22,14 @@ router = APIRouter(prefix="/imports", tags=["imports"])
 CATEGORY_CONFIDENCE_PENALTY = 0.35
 
 
+def _resolve_normalized_description(raw_description: str, llm_normalized_description: str | None) -> str:
+    if llm_normalized_description:
+        cleaned = " ".join(llm_normalized_description.split()).strip()
+        if cleaned:
+            return cleaned
+    return normalize_text(raw_description)
+
+
 @router.post(
     "",
     response_model=UploadStatementResponse,
@@ -114,7 +122,10 @@ async def upload_statement(
                 direction=normalized_direction,
                 counterparty=item.counterparty,
                 raw_description=item.raw_description,
-                normalized_description=normalize_text(item.raw_description),
+                normalized_description=_resolve_normalized_description(
+                    raw_description=item.raw_description,
+                    llm_normalized_description=item.normalized_description,
+                ),
                 category_id=category_id,
                 confidence=confidence,
                 duplicate_status=duplicate_match.status.value,

@@ -18,6 +18,17 @@ def build_prompt(raw_text: str, categories: Sequence[tuple[int, str]]) -> str:
 
     return f"""{template}
 
+REQUIRED JSON FIELDS FOR EACH TRANSACTION OBJECT:
+- booking_date
+- amount
+- currency
+- direction
+- counterparty
+- raw_description
+- normalized_description
+- category_id
+- confidence
+
 ALLOWED CATEGORIES WITH IDS:
 {category_lines}
 

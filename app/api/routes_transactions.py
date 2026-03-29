@@ -14,7 +14,7 @@ from app.schemas.transaction import (
     TransactionUpdateRequest,
 )
 from app.services.duplicate_detector import detect_duplicate_match
-from app.services.fingerprint import build_transaction_fingerprint, normalize_text
+from app.services.fingerprint import build_transaction_fingerprint
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -185,7 +185,6 @@ def update_transaction(
         "amount",
         "currency",
         "direction",
-        "raw_description",
         "counterparty",
     }
     should_rebuild_fingerprint = any(field in update_data for field in fingerprint_changed_fields)
@@ -199,8 +198,6 @@ def update_transaction(
             continue
         setattr(tx, field, value)
 
-    if "raw_description" in update_data:
-        tx.normalized_description = normalize_text(tx.raw_description)
 
     if should_rebuild_fingerprint:
         tx.fingerprint = build_transaction_fingerprint(

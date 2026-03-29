@@ -67,7 +67,7 @@ def _quantize_score(score: float) -> Decimal:
 
 
 def _probable_similarity_score(candidate: Transaction, raw_description: str, counterparty: str | None) -> Decimal:
-    candidate_description = candidate.normalized_description or normalize_text(candidate.raw_description)
+    candidate_description = candidate.raw_description or normalize_text(candidate.raw_description)
     incoming_description = normalize_text(raw_description)
 
     description_score = _text_similarity(candidate_description, incoming_description)

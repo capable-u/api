@@ -10,6 +10,7 @@ class ParsedTransaction(BaseModel):
     direction: str = Field(pattern="^(income|expense)$")
     counterparty: str | None = None
     raw_description: str
+    normalized_description: str | None = Field(default=None, min_length=1, max_length=180)
     category_id: int
     confidence: float = Field(ge=0.0, le=1.0)
 
@@ -24,7 +25,7 @@ class TransactionUpdateRequest(BaseModel):
     currency: str | None = None
     direction: str | None = Field(default=None, pattern="^(income|expense)$")
     counterparty: str | None = None
-    raw_description: str | None = None
+    normalized_description: str | None = None
     category_id: int | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 

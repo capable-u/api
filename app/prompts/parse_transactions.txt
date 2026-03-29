@@ -9,15 +9,20 @@ Your task:
    - direction = "income" for positive incoming money
    - direction = "expense" for outgoing money
 6. Keep raw_description as close as possible to the source text.
-7. booking_date must be ISO format YYYY-MM-DD.
-8. currency should default to EUR unless another currency is explicitly visible.
-9. confidence should reflect confidence in the category, not whether the row is a transaction.
-
-10. category_id must be one of the IDs from the "ALLOWED CATEGORIES WITH IDS" list.
-11. Never invent category IDs.
+7. Generate normalized_description from context: short, clear, no filler words.
+   - Keep only key facts: operation type, merchant/counterparty, and important reference/details if present.
+   - Remove boilerplate text, long legal/service fragments, repeated tokens, and noise.
+   - Do not lose critical transaction meaning; if details are important for identification, keep them.
+   - Prefer one compact phrase, typically 3-10 words.
+8. booking_date must be ISO format YYYY-MM-DD.
+9. currency should default to EUR unless another currency is explicitly visible.
+10. confidence should reflect confidence in the category, not whether the row is a transaction.
+11. category_id must be one of the IDs from the "ALLOWED CATEGORIES WITH IDS" list.
+12. Never invent category IDs.
 
 Important:
 - Return only real transactions.
 - Do not invent missing data.
 - Do not merge two transactions into one.
 - If a field is unknown, use null where allowed.
+- Each transaction JSON object must include normalized_description (or null if truly unavailable).
