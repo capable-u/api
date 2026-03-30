@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.0](https://github.com/capable-u/api/compare/v0.3.0...v0.4.0) (2026-03-30)
+
+
+### Features
+
+* **api:** add response models for categories and transactions ([f36165d](https://github.com/capable-u/api/commit/f36165db5ec370d2a402c6a63ff1b58db80698ac))
+* **duplicate:** enhance transaction normalization and description handling ([25b6851](https://github.com/capable-u/api/commit/25b685191a8ec4e93072c239d12fa4708bd0b9c7))
+* **Upload:** enhance transaction parsing with category validation and confidence adjustment ([754cbc3](https://github.com/capable-u/api/commit/754cbc3a4fce43c05fb7174018fd31128078fc79))
+
 ## [0.3.0](https://github.com/capable-u/api/compare/v0.2.0...v0.3.0) (2026-03-28)
 
 
