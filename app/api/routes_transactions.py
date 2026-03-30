@@ -101,23 +101,6 @@ def list_transactions(
     return [_serialize_transaction(tx) for tx in items]
 
 
-@router.get("/review-queue", response_model=list[TransactionSummaryResponse])
-def review_queue(
-        limit: int = Query(default=50, ge=1, le=500),
-        db: Session = Depends(get_db),
-):
-    items = db.execute(
-        select(Transaction)
-        .where(
-            Transaction.duplicate_status == DuplicateStatus.possible_duplicate.value,
-        )
-        .order_by(Transaction.booking_date.desc(), Transaction.id.desc())
-        .limit(limit)
-    ).scalars().all()
-
-    return [_serialize_transaction(tx) for tx in items]
-
-
 @router.get(
     "/{transaction_id}",
     response_model=TransactionDetailResponse,
@@ -255,5 +238,3 @@ def delete_transaction(
         "deleted": True,
         "action": "deleted",
     }
-
-
