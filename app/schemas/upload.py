@@ -1,5 +1,4 @@
-from datetime import datetime
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel
 
 
 class UploadStatementResponse(BaseModel):
@@ -18,8 +17,8 @@ class ImportJobResponse(BaseModel):
     new_transactions: int
     duplicate_transactions: int
     needs_review_count: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
 
 
 class PaginatedImportJobsResponse(BaseModel):

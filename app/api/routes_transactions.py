@@ -60,8 +60,8 @@ def _serialize_transaction_full(tx: Transaction) -> dict:
         {
             "import_job_id": tx.import_job_id,
             "fingerprint": tx.fingerprint,
-            "created_at": tx.created_at.isoformat(),
-            "updated_at": tx.updated_at.isoformat(),
+            "created_at": tx.created_at,
+            "updated_at": tx.updated_at,
         }
     )
     return payload
@@ -70,7 +70,7 @@ def _serialize_transaction_full(tx: Transaction) -> dict:
 def _serialize_transaction(tx: Transaction) -> dict:
     return {
         "id": tx.id,
-        "booking_date": tx.booking_date.isoformat(),
+        "booking_date": tx.booking_date,
         "amount": float(tx.amount),
         "currency": tx.currency,
         "direction": tx.direction,
