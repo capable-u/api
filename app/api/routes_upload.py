@@ -1,6 +1,6 @@
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.category import Category
@@ -15,11 +15,36 @@ from app.services.duplicate_detector import detect_duplicate_match
 from app.services.fingerprint import build_transaction_fingerprint, normalize_text
 from app.services.llm_client import LLMClientError
 from app.schemas.common import ErrorResponse
-from app.schemas.upload import UploadStatementResponse
+from app.schemas.upload import (
+    DeleteImportJobResponse,
+    PaginatedImportJobsResponse,
+    UploadStatementResponse,
+)
 
 router = APIRouter(prefix="/imports", tags=["imports"])
 
 CATEGORY_CONFIDENCE_PENALTY = 0.35
+
+
+def _get_import_job_or_404(db: Session, import_job_id: int) -> ImportJob:
+    job = db.get(ImportJob, import_job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Import job not found")
+    return job
+
+
+def _serialize_import_job(job: ImportJob) -> dict:
+    return {
+        "id": job.id,
+        "filename": job.filename,
+        "status": job.status,
+        "total_transactions": job.total_transactions,
+        "new_transactions": job.new_transactions,
+        "duplicate_transactions": job.duplicate_transactions,
+        "needs_review_count": job.needs_review_count,
+        "created_at": job.created_at,
+        "updated_at": job.updated_at,
+    }
 
 
 def _resolve_normalized_description(raw_description: str, llm_normalized_description: str | None) -> str:
@@ -28,6 +53,28 @@ def _resolve_normalized_description(raw_description: str, llm_normalized_descrip
         if cleaned:
             return cleaned
     return normalize_text(raw_description)
+
+
+@router.get("", response_model=PaginatedImportJobsResponse)
+def list_import_jobs(
+        limit: int = Query(default=50, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
+        db: Session = Depends(get_db),
+):
+    total = db.scalar(select(func.count(ImportJob.id))) or 0
+    jobs = db.execute(
+        select(ImportJob)
+        .order_by(ImportJob.created_at.desc(), ImportJob.id.desc())
+        .offset(offset)
+        .limit(limit)
+    ).scalars().all()
+
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": [_serialize_import_job(job) for job in jobs],
+    }
 
 
 @router.post(
@@ -169,3 +216,23 @@ async def upload_statement(
         db.add(job)
         db.commit()
         raise HTTPException(status_code=500, detail=f"Import failed: {e}") from e
+
+
+@router.delete(
+    "/{import_job_id}",
+    response_model=DeleteImportJobResponse,
+    responses={404: {"model": ErrorResponse}},
+)
+def delete_import_job(
+        import_job_id: int,
+        db: Session = Depends(get_db),
+):
+    job = _get_import_job_or_404(db, import_job_id)
+
+    db.delete(job)
+    db.commit()
+
+    return {
+        "id": import_job_id,
+        "deleted": True,
+    }

@@ -54,7 +54,13 @@ class TransactionDetailResponse(TransactionSummaryResponse):
     updated_at: datetime
 
 
+class PaginatedTransactionsResponse(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    items: list[TransactionSummaryResponse]
+
+
 class DeleteTransactionResponse(BaseModel):
     id: int
     deleted: bool
-    action: str
