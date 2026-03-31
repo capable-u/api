@@ -16,6 +16,7 @@ from app.schemas.transaction import (
 )
 from app.services.duplicate_detector import detect_duplicate_match
 from app.services.fingerprint import build_transaction_fingerprint
+from app.services.monthly_summary_service import month_start, rebuild_monthly_summaries_for_months
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -158,6 +159,8 @@ def mark_transaction_as_unique(
     db.add(tx)
     if job:
         db.add(job)
+    db.flush()
+    rebuild_monthly_summaries_for_months(db=db, months={month_start(tx.booking_date)})
     db.commit()
     db.refresh(tx)
 
@@ -180,6 +183,8 @@ def update_transaction(
     if not update_data:
         return _serialize_transaction_full(tx)
 
+    old_month = month_start(tx.booking_date)
+
     fingerprint_changed_fields = {
         "booking_date",
         "amount",
@@ -188,6 +193,15 @@ def update_transaction(
         "counterparty",
     }
     should_rebuild_fingerprint = any(field in update_data for field in fingerprint_changed_fields)
+    summary_changed_fields = {
+        "booking_date",
+        "amount",
+        "currency",
+        "direction",
+        "category_id",
+        "counterparty",
+    }
+    should_rebuild_summary = any(field in update_data for field in summary_changed_fields)
 
     for field, value in update_data.items():
         if field == "currency" and value is not None:
@@ -223,8 +237,15 @@ def update_transaction(
         tx.duplicate_of_transaction_id = duplicate_match.duplicate_of_transaction_id
         tx.duplicate_reason = duplicate_match.duplicate_reason
         tx.duplicate_score = duplicate_match.duplicate_score
+        should_rebuild_summary = True
 
     db.add(tx)
+    db.flush()
+    if should_rebuild_summary:
+        rebuild_monthly_summaries_for_months(
+            db=db,
+            months={old_month, month_start(tx.booking_date)},
+        )
     db.commit()
     db.refresh(tx)
 
@@ -244,8 +265,11 @@ def delete_transaction(
     job = db.get(ImportJob, tx.import_job_id)
 
     _apply_delete_job_counters(job=job, tx=tx)
+    affected_month = month_start(tx.booking_date)
 
     db.delete(tx)
+    db.flush()
+    rebuild_monthly_summaries_for_months(db=db, months={affected_month})
     if job:
         db.add(job)
     db.commit()

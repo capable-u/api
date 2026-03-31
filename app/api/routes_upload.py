@@ -14,6 +14,7 @@ from app.services.transaction_parser import parse_transactions_from_text
 from app.services.duplicate_detector import detect_duplicate_match
 from app.services.fingerprint import build_transaction_fingerprint, normalize_text
 from app.services.llm_client import LLMClientError
+from app.services.monthly_summary_service import month_start, rebuild_monthly_summaries_for_months
 from app.schemas.common import ErrorResponse
 from app.schemas.upload import (
     DeleteImportJobResponse,
@@ -128,6 +129,7 @@ async def upload_statement(
         new_transactions = 0
         duplicate_transactions = 0
         needs_review_count = 0
+        affected_months: set = set()
 
         for item in parsed.transactions:
             category_id = item.category_id
@@ -183,6 +185,7 @@ async def upload_statement(
             )
             db.add(tx)
             db.flush()
+            affected_months.add(month_start(tx.booking_date))
 
             if duplicate_match.status.value == DuplicateStatus.unique.value:
                 new_transactions += 1
@@ -193,6 +196,7 @@ async def upload_statement(
         job.duplicate_transactions = duplicate_transactions
         job.needs_review_count = needs_review_count
         job.status = "needs_review" if needs_review_count > 0 else "done"
+        rebuild_monthly_summaries_for_months(db=db, months=affected_months)
         db.commit()
 
         return {
@@ -228,8 +232,15 @@ def delete_import_job(
         db: Session = Depends(get_db),
 ):
     job = _get_import_job_or_404(db, import_job_id)
+    affected_months = set(
+        db.execute(
+            select(Transaction.booking_date).where(Transaction.import_job_id == import_job_id).distinct()
+        ).scalars().all()
+    )
 
     db.delete(job)
+    db.flush()
+    rebuild_monthly_summaries_for_months(db=db, months=affected_months)
     db.commit()
 
     return {
