@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -5,8 +7,11 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.models.enums import DuplicateStatus
 from app.models.import_job import ImportJob
+from app.models.monthly_category_summary import MonthlyCategorySummary
+from app.models.monthly_summary import MonthlySummary
 from app.models.transaction import Transaction
 from app.schemas.common import ErrorResponse
+from app.schemas.monthly_summary import MonthlyOverviewResponse
 from app.schemas.transaction import (
     DeleteTransactionResponse,
     PaginatedTransactionsResponse,
@@ -116,6 +121,77 @@ def list_transactions(
         "limit": limit,
         "offset": offset,
         "items": [_serialize_transaction(tx) for tx in items],
+    }
+
+
+@router.get("/monthly-summary", response_model=MonthlyOverviewResponse)
+def get_monthly_summary(
+        month_from: date | None = Query(default=None),
+        month_to: date | None = Query(default=None),
+        currency: str | None = Query(default=None, min_length=3, max_length=10),
+        db: Session = Depends(get_db),
+):
+    if month_from and month_to and month_from > month_to:
+        raise HTTPException(status_code=400, detail="month_from must be less than or equal to month_to")
+
+    normalized_currency = currency.strip().upper() if currency else None
+
+    summary_filters = []
+    category_filters = []
+
+    if month_from is not None:
+        summary_filters.append(MonthlySummary.month >= month_from)
+        category_filters.append(MonthlyCategorySummary.month >= month_from)
+    if month_to is not None:
+        summary_filters.append(MonthlySummary.month <= month_to)
+        category_filters.append(MonthlyCategorySummary.month <= month_to)
+    if normalized_currency is not None:
+        summary_filters.append(MonthlySummary.currency == normalized_currency)
+        category_filters.append(MonthlyCategorySummary.currency == normalized_currency)
+
+    summary_rows = db.execute(
+        select(MonthlySummary)
+        .where(*summary_filters)
+        .order_by(MonthlySummary.month.desc(), MonthlySummary.currency.asc())
+    ).scalars().all()
+
+    category_rows = db.execute(
+        select(
+            MonthlyCategorySummary.month,
+            MonthlyCategorySummary.currency,
+            MonthlyCategorySummary.category_id,
+            MonthlyCategorySummary.expense_total,
+        )
+        .where(*category_filters)
+        .order_by(
+            MonthlyCategorySummary.month.desc(),
+            MonthlyCategorySummary.currency.asc(),
+            MonthlyCategorySummary.category_id.asc(),
+        )
+    ).all()
+
+    return {
+        "month_from": month_from,
+        "month_to": month_to,
+        "currency": normalized_currency,
+        "summaries": [
+            {
+                "month": row.month,
+                "currency": row.currency,
+                "income_total": float(row.income_total),
+                "expense_total": float(row.expense_total),
+            }
+            for row in summary_rows
+        ],
+        "category_summaries": [
+            {
+                "month": row.month,
+                "currency": row.currency,
+                "category_id": row.category_id,
+                "expense_total": float(row.expense_total),
+            }
+            for row in category_rows
+        ],
     }
 
 
