@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -9,6 +9,7 @@ from app.models.transaction import Transaction
 from app.schemas.common import ErrorResponse
 from app.schemas.transaction import (
     DeleteTransactionResponse,
+    PaginatedTransactionsResponse,
     TransactionDetailResponse,
     TransactionSummaryResponse,
     TransactionUpdateRequest,
@@ -59,8 +60,8 @@ def _serialize_transaction_full(tx: Transaction) -> dict:
         {
             "import_job_id": tx.import_job_id,
             "fingerprint": tx.fingerprint,
-            "created_at": tx.created_at.isoformat(),
-            "updated_at": tx.updated_at.isoformat(),
+            "created_at": tx.created_at,
+            "updated_at": tx.updated_at,
         }
     )
     return payload
@@ -69,7 +70,7 @@ def _serialize_transaction_full(tx: Transaction) -> dict:
 def _serialize_transaction(tx: Transaction) -> dict:
     return {
         "id": tx.id,
-        "booking_date": tx.booking_date.isoformat(),
+        "booking_date": tx.booking_date,
         "amount": float(tx.amount),
         "currency": tx.currency,
         "direction": tx.direction,
@@ -85,20 +86,36 @@ def _serialize_transaction(tx: Transaction) -> dict:
     }
 
 
-@router.get("", response_model=list[TransactionSummaryResponse])
+@router.get("", response_model=PaginatedTransactionsResponse)
 def list_transactions(
         duplicate_status: DuplicateStatus | None = Query(default=None),
+        import_job_id: int | None = Query(default=None, ge=1),
+        limit: int = Query(default=50, ge=1, le=200),
+        offset: int = Query(default=0, ge=0),
         db: Session = Depends(get_db),
 ):
-    query = select(Transaction)
+    filters = []
     if duplicate_status:
-        query = query.where(Transaction.duplicate_status == duplicate_status.value)
+        filters.append(Transaction.duplicate_status == duplicate_status.value)
+    if import_job_id is not None:
+        filters.append(Transaction.import_job_id == import_job_id)
+
+    query = select(Transaction)
+    if filters:
+        query = query.where(*filters)
+
+    total = db.scalar(select(func.count(Transaction.id)).where(*filters)) or 0
 
     items = db.execute(
-        query.order_by(Transaction.booking_date.desc(), Transaction.id.desc())
+        query.order_by(Transaction.booking_date.desc(), Transaction.id.desc()).offset(offset).limit(limit)
     ).scalars().all()
 
-    return [_serialize_transaction(tx) for tx in items]
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": [_serialize_transaction(tx) for tx in items],
+    }
 
 
 @router.get(
@@ -236,5 +253,4 @@ def delete_transaction(
     return {
         "id": transaction_id,
         "deleted": True,
-        "action": "deleted",
     }

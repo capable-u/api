@@ -1,6 +1,6 @@
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 
 
 class ParsedTransaction(BaseModel):
@@ -50,11 +50,17 @@ class TransactionSummaryResponse(BaseModel):
 class TransactionDetailResponse(TransactionSummaryResponse):
     import_job_id: int
     fingerprint: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+
+
+class PaginatedTransactionsResponse(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    items: list[TransactionSummaryResponse]
 
 
 class DeleteTransactionResponse(BaseModel):
     id: int
     deleted: bool
-    action: str
