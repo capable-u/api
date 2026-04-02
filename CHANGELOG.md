@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/capable-u/api/compare/v0.4.0...v0.5.0) (2026-04-02)
+
+
+### Features
+
+* **api:** add monthly summary retrieval endpoint with filtering options ([e10e5bd](https://github.com/capable-u/api/commit/e10e5bd0a50933c3aed02aefbe795b825208d297))
+* **database:** add monthly summary and category summary tables ([8438b94](https://github.com/capable-u/api/commit/8438b946b80703b46b2575fe35d6cf11a4ec0074))
+* **monthly_summary:** add income_total field and update summary calculations ([85af1d8](https://github.com/capable-u/api/commit/85af1d87519feb6b2fb30ccf06db4449a240eb0a))
+* **monthly_summary:** implement monthly summary rebuilding and service functions ([c1c4d40](https://github.com/capable-u/api/commit/c1c4d403ec57025f1c54948c4c2fe520c3f12b41))
+* **upload:** Implement pagination for import jobs and enhance transaction listing ([#7](https://github.com/capable-u/api/issues/7)) ([5ccae48](https://github.com/capable-u/api/commit/5ccae48e32a25b9e2d8658192d41a5e17d3b0979))
+
 ## [0.4.0](https://github.com/capable-u/api/compare/v0.3.0...v0.4.0) (2026-03-30)
 
 
