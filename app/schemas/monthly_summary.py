@@ -14,6 +14,7 @@ class MonthlyCategorySummaryRowResponse(BaseModel):
     month: date
     currency: str
     category_id: int
+    income_total: float
     expense_total: float
 
 

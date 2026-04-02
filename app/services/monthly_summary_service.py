@@ -74,15 +74,34 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
             ]
         )
 
+    category_income_total = func.coalesce(
+        func.sum(
+            case(
+                (Transaction.direction == Direction.income.value, Transaction.amount),
+                else_=0,
+            )
+        ),
+        0,
+    )
+    category_expense_total = func.coalesce(
+        func.sum(
+            case(
+                (Transaction.direction == Direction.expense.value, Transaction.amount),
+                else_=0,
+            )
+        ),
+        0,
+    )
+
     category_rows = db.execute(
         select(
             Transaction.category_id,
             Transaction.currency,
-            func.sum(Transaction.amount).label("expense_total"),
+            category_income_total.label("income_total"),
+            category_expense_total.label("expense_total"),
         )
         .where(
             *base_filters,
-            Transaction.direction == Direction.expense.value,
             Transaction.category_id.is_not(None),
         )
         .group_by(Transaction.category_id, Transaction.currency)
@@ -95,6 +114,7 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
                     month=normalized_month,
                     category_id=row.category_id,
                     currency=row.currency,
+                    income_total=row.income_total,
                     expense_total=row.expense_total,
                 )
                 for row in category_rows

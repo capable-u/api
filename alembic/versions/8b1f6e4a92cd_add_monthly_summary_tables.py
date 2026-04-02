@@ -40,6 +40,7 @@ def upgrade() -> None:
         sa.Column("month", sa.Date(), nullable=False),
         sa.Column("category_id", sa.Integer(), nullable=False),
         sa.Column("currency", sa.String(length=10), nullable=False),
+        sa.Column("income_total", sa.Numeric(precision=14, scale=2), nullable=False),
         sa.Column("expense_total", sa.Numeric(precision=14, scale=2), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),

@@ -166,7 +166,7 @@ async def upload_statement(
             tx = Transaction(
                 import_job_id=job.id,
                 booking_date=item.booking_date,
-                amount=item.amount,
+                amount=abs(item.amount),
                 currency=normalized_currency,
                 direction=normalized_direction,
                 counterparty=item.counterparty,

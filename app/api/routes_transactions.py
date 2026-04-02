@@ -136,6 +136,16 @@ def get_monthly_summary(
 
     normalized_currency = currency.strip().upper() if currency else None
 
+    if month_from is None and month_to is None:
+        latest_month_query = select(func.max(MonthlySummary.month))
+        if normalized_currency is not None:
+            latest_month_query = latest_month_query.where(MonthlySummary.currency == normalized_currency)
+
+        latest_month = db.scalar(latest_month_query)
+        if latest_month is not None:
+            month_from = latest_month
+            month_to = latest_month
+
     summary_filters = []
     category_filters = []
 
@@ -160,6 +170,7 @@ def get_monthly_summary(
             MonthlyCategorySummary.month,
             MonthlyCategorySummary.currency,
             MonthlyCategorySummary.category_id,
+            MonthlyCategorySummary.income_total,
             MonthlyCategorySummary.expense_total,
         )
         .where(*category_filters)
@@ -188,6 +199,7 @@ def get_monthly_summary(
                 "month": row.month,
                 "currency": row.currency,
                 "category_id": row.category_id,
+                "income_total": float(row.income_total),
                 "expense_total": float(row.expense_total),
             }
             for row in category_rows
