@@ -11,7 +11,7 @@ from app.models.monthly_category_summary import MonthlyCategorySummary
 from app.models.monthly_summary import MonthlySummary
 from app.models.transaction import Transaction
 from app.schemas.common import ErrorResponse
-from app.schemas.monthly_summary import MonthlyOverviewResponse
+from app.schemas.monthly_summary import MonthlyOverviewResponse, MonthlySummaryMetaResponse
 from app.schemas.transaction import (
     DeleteTransactionResponse,
     PaginatedTransactionsResponse,
@@ -246,6 +246,28 @@ def get_monthly_summary(
             }
             for row in category_rows
         ],
+    }
+
+
+@router.get("/monthly-summary/meta", response_model=MonthlySummaryMetaResponse)
+def get_monthly_summary_meta(
+        db: Session = Depends(get_db),
+):
+    available_months = db.execute(
+        select(MonthlySummary.month)
+        .distinct()
+        .order_by(MonthlySummary.month.desc())
+    ).scalars().all()
+
+    currencies = db.execute(
+        select(MonthlySummary.currency)
+        .distinct()
+        .order_by(MonthlySummary.currency.asc())
+    ).scalars().all()
+
+    return {
+        "available_months": available_months,
+        "currencies": currencies,
     }
 
 

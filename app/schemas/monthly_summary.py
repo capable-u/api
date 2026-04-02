@@ -25,3 +25,9 @@ class MonthlyOverviewResponse(BaseModel):
     summaries: list[MonthlySummaryRowResponse]
     category_summaries: list[MonthlyCategorySummaryRowResponse]
 
+
+class MonthlySummaryMetaResponse(BaseModel):
+    available_months: list[date]
+    currencies: list[str]
+
+
