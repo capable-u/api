@@ -4,7 +4,7 @@ from decimal import Decimal
 from difflib import SequenceMatcher
 import re
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.enums import DuplicateStatus
@@ -15,6 +15,9 @@ from app.services.fingerprint import normalize_text
 PROBABLE_DATE_WINDOW_DAYS = 3
 PROBABLE_SCORE_THRESHOLD = Decimal("0.80")
 MAX_PROBABLE_CANDIDATES = 50
+INTERNAL_TRANSFER_REASON = "internal_transfer"
+INTERNAL_TRANSFER_SCORE = Decimal("0.950")
+INTERNAL_TRANSFER_AMOUNT_TOLERANCE = Decimal("0.01")
 
 
 @dataclass
@@ -128,6 +131,43 @@ def _find_probable_candidates(
     ).scalars().all()
 
 
+def _find_internal_transfer_candidate(
+        db: Session,
+        booking_date: date,
+        amount: Decimal,
+        currency: str,
+        direction: str,
+        exclude_transaction_id: int | None = None,
+) -> Transaction | None:
+    opposite_direction = "income" if direction == "expense" else "expense"
+    from_date = booking_date - timedelta(days=PROBABLE_DATE_WINDOW_DAYS)
+    to_date = booking_date + timedelta(days=PROBABLE_DATE_WINDOW_DAYS)
+    min_amount = amount - INTERNAL_TRANSFER_AMOUNT_TOLERANCE
+    max_amount = amount + INTERNAL_TRANSFER_AMOUNT_TOLERANCE
+
+    conditions = [
+        Transaction.currency == currency,
+        Transaction.direction == opposite_direction,
+        Transaction.amount >= min_amount,
+        Transaction.amount <= max_amount,
+        Transaction.booking_date >= from_date,
+        Transaction.booking_date <= to_date,
+        or_(
+            Transaction.duplicate_reason.is_(None),
+            Transaction.duplicate_reason != INTERNAL_TRANSFER_REASON,
+        ),
+    ]
+    if exclude_transaction_id is not None:
+        conditions.append(Transaction.id != exclude_transaction_id)
+
+    return db.execute(
+        select(Transaction)
+        .where(and_(*conditions))
+        .order_by(Transaction.booking_date.desc(), Transaction.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+
 def detect_duplicate_match(
         db: Session,
         booking_date: date,
@@ -150,6 +190,22 @@ def detect_duplicate_match(
             duplicate_of_transaction_id=exact.id,
             duplicate_reason="exact_fingerprint",
             duplicate_score=Decimal("1.000"),
+        )
+
+    internal_transfer_candidate = _find_internal_transfer_candidate(
+        db=db,
+        booking_date=booking_date,
+        amount=amount,
+        currency=currency,
+        direction=direction,
+        exclude_transaction_id=exclude_transaction_id,
+    )
+    if internal_transfer_candidate:
+        return DuplicateMatch(
+            status=DuplicateStatus.duplicate_confirmed,
+            duplicate_of_transaction_id=internal_transfer_candidate.id,
+            duplicate_reason=INTERNAL_TRANSFER_REASON,
+            duplicate_score=INTERNAL_TRANSFER_SCORE,
         )
 
     candidates = _find_probable_candidates(

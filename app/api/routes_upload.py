@@ -11,7 +11,7 @@ from app.models.import_job import ImportJob
 from app.models.transaction import Transaction
 from app.services.pdf_extract import extract_text_with_pypdf
 from app.services.transaction_parser import parse_transactions_from_text
-from app.services.duplicate_detector import detect_duplicate_match
+from app.services.duplicate_detector import INTERNAL_TRANSFER_REASON, detect_duplicate_match
 from app.services.fingerprint import build_transaction_fingerprint, normalize_text
 from app.services.llm_client import LLMClientError
 from app.services.monthly_summary_service import month_start, rebuild_monthly_summaries_for_months
@@ -54,6 +54,25 @@ def _resolve_normalized_description(raw_description: str, llm_normalized_descrip
         if cleaned:
             return cleaned
     return normalize_text(raw_description)
+
+
+def _link_internal_transfer_pair(db: Session, tx: Transaction, counterpart_id: int, score) -> Transaction | None:
+    counterpart = db.get(Transaction, counterpart_id)
+    if counterpart is None:
+        return None
+
+    tx.duplicate_status = DuplicateStatus.duplicate_confirmed.value
+    tx.duplicate_of_transaction_id = counterpart.id
+    tx.duplicate_reason = INTERNAL_TRANSFER_REASON
+    tx.duplicate_score = score
+
+    counterpart.duplicate_status = DuplicateStatus.duplicate_confirmed.value
+    counterpart.duplicate_of_transaction_id = tx.id
+    counterpart.duplicate_reason = INTERNAL_TRANSFER_REASON
+    counterpart.duplicate_score = score
+
+    db.add(counterpart)
+    return counterpart
 
 
 @router.get("", response_model=PaginatedImportJobsResponse)
@@ -159,7 +178,10 @@ async def upload_statement(
                 fingerprint=fingerprint,
             )
 
-            if duplicate_match.status.value == DuplicateStatus.duplicate_confirmed.value:
+            if (
+                duplicate_match.status.value == DuplicateStatus.duplicate_confirmed.value
+                and duplicate_match.duplicate_reason != INTERNAL_TRANSFER_REASON
+            ):
                 duplicate_transactions += 1
                 continue
 
@@ -187,10 +209,25 @@ async def upload_statement(
             db.flush()
             affected_months.add(month_start(tx.booking_date))
 
+            if (
+                duplicate_match.duplicate_reason == INTERNAL_TRANSFER_REASON
+                and duplicate_match.duplicate_of_transaction_id is not None
+            ):
+                counterpart = _link_internal_transfer_pair(
+                    db=db,
+                    tx=tx,
+                    counterpart_id=duplicate_match.duplicate_of_transaction_id,
+                    score=duplicate_match.duplicate_score,
+                )
+                if counterpart is not None:
+                    affected_months.add(month_start(counterpart.booking_date))
+
             if duplicate_match.status.value == DuplicateStatus.unique.value:
                 new_transactions += 1
             elif duplicate_match.status.value == DuplicateStatus.possible_duplicate.value:
                 needs_review_count += 1
+            elif duplicate_match.duplicate_reason == INTERNAL_TRANSFER_REASON:
+                duplicate_transactions += 1
 
         job.new_transactions = new_transactions
         job.duplicate_transactions = duplicate_transactions

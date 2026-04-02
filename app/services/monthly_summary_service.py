@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.enums import Direction, DuplicateStatus
@@ -30,6 +30,10 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
         Transaction.booking_date >= normalized_month,
         Transaction.booking_date < month_end,
         Transaction.duplicate_status == DuplicateStatus.unique.value,
+        or_(
+            Transaction.duplicate_reason.is_(None),
+            Transaction.duplicate_reason != "internal_transfer",
+        ),
     ]
 
     income_total = func.coalesce(

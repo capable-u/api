@@ -19,7 +19,7 @@ from app.schemas.transaction import (
     TransactionSummaryResponse,
     TransactionUpdateRequest,
 )
-from app.services.duplicate_detector import detect_duplicate_match
+from app.services.duplicate_detector import INTERNAL_TRANSFER_REASON, detect_duplicate_match
 from app.services.fingerprint import build_transaction_fingerprint
 from app.services.monthly_summary_service import month_start, rebuild_monthly_summaries_for_months
 
@@ -58,6 +58,48 @@ def _apply_delete_job_counters(job: ImportJob | None, tx: Transaction) -> None:
         job.needs_review_count = max(0, job.needs_review_count - 1)
 
     job.status = "needs_review" if job.needs_review_count > 0 else "done"
+
+
+def _reset_duplicate_metadata(tx: Transaction) -> None:
+    tx.duplicate_status = DuplicateStatus.unique.value
+    tx.duplicate_of_transaction_id = None
+    tx.duplicate_reason = None
+    tx.duplicate_score = None
+
+
+def _get_internal_transfer_counterpart(db: Session, tx: Transaction) -> Transaction | None:
+    if tx.duplicate_reason == INTERNAL_TRANSFER_REASON and tx.duplicate_of_transaction_id is not None:
+        counterpart = db.get(Transaction, tx.duplicate_of_transaction_id)
+        if counterpart is not None:
+            return counterpart
+
+    return db.execute(
+        select(Transaction)
+        .where(
+            Transaction.id != tx.id,
+            Transaction.duplicate_reason == INTERNAL_TRANSFER_REASON,
+            Transaction.duplicate_of_transaction_id == tx.id,
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def _link_internal_transfer_pair(db: Session, tx: Transaction, counterpart_id: int, score) -> Transaction | None:
+    counterpart = db.get(Transaction, counterpart_id)
+    if counterpart is None or counterpart.id == tx.id:
+        return None
+
+    tx.duplicate_status = DuplicateStatus.duplicate_confirmed.value
+    tx.duplicate_of_transaction_id = counterpart.id
+    tx.duplicate_reason = INTERNAL_TRANSFER_REASON
+    tx.duplicate_score = score
+
+    counterpart.duplicate_status = DuplicateStatus.duplicate_confirmed.value
+    counterpart.duplicate_of_transaction_id = tx.id
+    counterpart.duplicate_reason = INTERNAL_TRANSFER_REASON
+    counterpart.duplicate_score = score
+    db.add(counterpart)
+    return counterpart
 
 
 def _serialize_transaction_full(tx: Transaction) -> dict:
@@ -230,13 +272,13 @@ def mark_transaction_as_unique(
         db: Session = Depends(get_db),
 ):
     tx = _get_transaction_or_404(db, transaction_id)
+    if tx.duplicate_reason == INTERNAL_TRANSFER_REASON:
+        raise HTTPException(status_code=400, detail="Internal transfers cannot be marked as unique")
+
     was_possible_duplicate = tx.duplicate_status == DuplicateStatus.possible_duplicate.value
     job = db.get(ImportJob, tx.import_job_id)
 
-    tx.duplicate_status = DuplicateStatus.unique.value
-    tx.duplicate_of_transaction_id = None
-    tx.duplicate_reason = None
-    tx.duplicate_score = None
+    _reset_duplicate_metadata(tx)
 
     _apply_review_job_counters(
         job=job,
@@ -272,6 +314,7 @@ def update_transaction(
         return _serialize_transaction_full(tx)
 
     old_month = month_start(tx.booking_date)
+    old_internal_counterpart = _get_internal_transfer_counterpart(db, tx)
 
     fingerprint_changed_fields = {
         "booking_date",
@@ -325,14 +368,42 @@ def update_transaction(
         tx.duplicate_of_transaction_id = duplicate_match.duplicate_of_transaction_id
         tx.duplicate_reason = duplicate_match.duplicate_reason
         tx.duplicate_score = duplicate_match.duplicate_score
+
+        new_internal_counterpart = None
+        if (
+            duplicate_match.duplicate_reason == INTERNAL_TRANSFER_REASON
+            and duplicate_match.duplicate_of_transaction_id is not None
+        ):
+            new_internal_counterpart = _link_internal_transfer_pair(
+                db=db,
+                tx=tx,
+                counterpart_id=duplicate_match.duplicate_of_transaction_id,
+                score=duplicate_match.duplicate_score,
+            )
+
+        if (
+            old_internal_counterpart is not None
+            and (new_internal_counterpart is None or old_internal_counterpart.id != new_internal_counterpart.id)
+        ):
+            _reset_duplicate_metadata(old_internal_counterpart)
+            db.add(old_internal_counterpart)
+
         should_rebuild_summary = True
 
     db.add(tx)
     db.flush()
     if should_rebuild_summary:
+        affected_months = {old_month, month_start(tx.booking_date)}
+        if old_internal_counterpart is not None:
+            affected_months.add(month_start(old_internal_counterpart.booking_date))
+        if tx.duplicate_reason == INTERNAL_TRANSFER_REASON and tx.duplicate_of_transaction_id is not None:
+            linked = db.get(Transaction, tx.duplicate_of_transaction_id)
+            if linked is not None:
+                affected_months.add(month_start(linked.booking_date))
+
         rebuild_monthly_summaries_for_months(
             db=db,
-            months={old_month, month_start(tx.booking_date)},
+            months=affected_months,
         )
     db.commit()
     db.refresh(tx)
@@ -351,13 +422,20 @@ def delete_transaction(
 ):
     tx = _get_transaction_or_404(db, transaction_id)
     job = db.get(ImportJob, tx.import_job_id)
+    internal_counterpart = _get_internal_transfer_counterpart(db, tx)
 
     _apply_delete_job_counters(job=job, tx=tx)
     affected_month = month_start(tx.booking_date)
 
     db.delete(tx)
     db.flush()
-    rebuild_monthly_summaries_for_months(db=db, months={affected_month})
+    affected_months = {affected_month}
+    if internal_counterpart is not None and internal_counterpart.id != tx.id:
+        _reset_duplicate_metadata(internal_counterpart)
+        db.add(internal_counterpart)
+        affected_months.add(month_start(internal_counterpart.booking_date))
+
+    rebuild_monthly_summaries_for_months(db=db, months=affected_months)
     if job:
         db.add(job)
     db.commit()
