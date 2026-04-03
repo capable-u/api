@@ -17,8 +17,14 @@ class ImportJob(Base):
 
     total_transactions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     new_transactions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    duplicate_transactions: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    duplicate_transactions: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
     needs_review_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
-    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now, onupdate=utc_now, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), default=utc_now, onupdate=utc_now, nullable=False
+    )

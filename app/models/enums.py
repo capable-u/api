@@ -16,7 +16,6 @@ class Direction(str, Enum):
     expense = "expense"
 
 
-
 class DuplicateStatus(str, Enum):
     unique = "unique"
     possible_duplicate = "possible_duplicate"

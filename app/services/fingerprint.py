@@ -20,12 +20,12 @@ def normalize_amount(value: Decimal) -> str:
 
 
 def build_transaction_fingerprint(
-        booking_date: date,
-        amount: Decimal,
-        currency: str,
-        direction: str,
-        raw_description: str,
-        counterparty: str | None,
+    booking_date: date,
+    amount: Decimal,
+    currency: str,
+    direction: str,
+    raw_description: str,
+    counterparty: str | None,
 ) -> str:
     payload = "|".join(
         [

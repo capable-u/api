@@ -11,10 +11,16 @@ from app.models.import_job import ImportJob
 from app.models.transaction import Transaction
 from app.services.pdf_extract import extract_text_with_pypdf
 from app.services.transaction_parser import parse_transactions_from_text
-from app.services.duplicate_detector import INTERNAL_TRANSFER_REASON, detect_duplicate_match
+from app.services.duplicate_detector import (
+    INTERNAL_TRANSFER_REASON,
+    detect_duplicate_match,
+)
 from app.services.fingerprint import build_transaction_fingerprint, normalize_text
 from app.services.llm_client import LLMClientError
-from app.services.monthly_summary_service import month_start, rebuild_monthly_summaries_for_months
+from app.services.monthly_summary_service import (
+    month_start,
+    rebuild_monthly_summaries_for_months,
+)
 from app.schemas.common import ErrorResponse
 from app.schemas.upload import (
     DeleteImportJobResponse,
@@ -48,7 +54,9 @@ def _serialize_import_job(job: ImportJob) -> dict:
     }
 
 
-def _resolve_normalized_description(raw_description: str, llm_normalized_description: str | None) -> str:
+def _resolve_normalized_description(
+    raw_description: str, llm_normalized_description: str | None
+) -> str:
     if llm_normalized_description:
         cleaned = " ".join(llm_normalized_description.split()).strip()
         if cleaned:
@@ -56,7 +64,9 @@ def _resolve_normalized_description(raw_description: str, llm_normalized_descrip
     return normalize_text(raw_description)
 
 
-def _link_internal_transfer_pair(db: Session, tx: Transaction, counterpart_id: int, score) -> Transaction | None:
+def _link_internal_transfer_pair(
+    db: Session, tx: Transaction, counterpart_id: int, score
+) -> Transaction | None:
     counterpart = db.get(Transaction, counterpart_id)
     if counterpart is None:
         return None
@@ -77,17 +87,21 @@ def _link_internal_transfer_pair(db: Session, tx: Transaction, counterpart_id: i
 
 @router.get("", response_model=PaginatedImportJobsResponse)
 def list_import_jobs(
-        limit: int = Query(default=50, ge=1, le=200),
-        offset: int = Query(default=0, ge=0),
-        db: Session = Depends(get_db),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
 ):
     total = db.scalar(select(func.count(ImportJob.id))) or 0
-    jobs = db.execute(
-        select(ImportJob)
-        .order_by(ImportJob.created_at.desc(), ImportJob.id.desc())
-        .offset(offset)
-        .limit(limit)
-    ).scalars().all()
+    jobs = (
+        db.execute(
+            select(ImportJob)
+            .order_by(ImportJob.created_at.desc(), ImportJob.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        .scalars()
+        .all()
+    )
 
     return {
         "total": total,
@@ -107,8 +121,8 @@ def list_import_jobs(
     },
 )
 async def upload_statement(
-        file: UploadFile = File(...),
-        db: Session = Depends(get_db),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
 ):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
@@ -126,15 +140,23 @@ async def upload_statement(
     db.refresh(job)
 
     try:
-        categories = db.execute(select(Category).order_by(Category.id.asc())).scalars().all()
+        categories = (
+            db.execute(select(Category).order_by(Category.id.asc())).scalars().all()
+        )
         if not categories:
-            raise HTTPException(status_code=500, detail="Categories are not initialized")
+            raise HTTPException(
+                status_code=500, detail="Categories are not initialized"
+            )
 
         category_pairs = [(item.id, item.name) for item in categories]
         valid_category_ids = {item.id for item in categories}
-        other_category = next((item for item in categories if item.name.strip().lower() == "other"), None)
+        other_category = next(
+            (item for item in categories if item.name.strip().lower() == "other"), None
+        )
         if other_category is None:
-            raise HTTPException(status_code=500, detail='Category "Other" is not configured')
+            raise HTTPException(
+                status_code=500, detail='Category "Other" is not configured'
+            )
 
         raw_text = extract_text_with_pypdf(str(file_path))
         job.raw_text = raw_text
@@ -179,7 +201,8 @@ async def upload_statement(
             )
 
             if (
-                duplicate_match.status.value == DuplicateStatus.duplicate_confirmed.value
+                duplicate_match.status.value
+                == DuplicateStatus.duplicate_confirmed.value
                 and duplicate_match.duplicate_reason != INTERNAL_TRANSFER_REASON
             ):
                 duplicate_transactions += 1
@@ -224,7 +247,9 @@ async def upload_statement(
 
             if duplicate_match.status.value == DuplicateStatus.unique.value:
                 new_transactions += 1
-            elif duplicate_match.status.value == DuplicateStatus.possible_duplicate.value:
+            elif (
+                duplicate_match.status.value == DuplicateStatus.possible_duplicate.value
+            ):
                 needs_review_count += 1
             elif duplicate_match.duplicate_reason == INTERNAL_TRANSFER_REASON:
                 duplicate_transactions += 1
@@ -265,14 +290,18 @@ async def upload_statement(
     responses={404: {"model": ErrorResponse}},
 )
 def delete_import_job(
-        import_job_id: int,
-        db: Session = Depends(get_db),
+    import_job_id: int,
+    db: Session = Depends(get_db),
 ):
     job = _get_import_job_or_404(db, import_job_id)
     affected_months = set(
         db.execute(
-            select(Transaction.booking_date).where(Transaction.import_job_id == import_job_id).distinct()
-        ).scalars().all()
+            select(Transaction.booking_date)
+            .where(Transaction.import_job_id == import_job_id)
+            .distinct()
+        )
+        .scalars()
+        .all()
     )
 
     db.delete(job)

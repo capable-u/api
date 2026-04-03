@@ -49,9 +49,7 @@ async def openai_chat_json(prompt: str, schema: dict) -> dict:
         raise LLMClientError(f"OpenAI request failed: {e}") from e
 
     if response.status_code >= 400:
-        raise LLMClientError(
-            f"OpenAI error {response.status_code}: {response.text}"
-        )
+        raise LLMClientError(f"OpenAI error {response.status_code}: {response.text}")
 
     data = response.json()
 
