@@ -29,4 +29,3 @@ class UTCDateTime(TypeDecorator[datetime]):
         if value is None:
             return None
         return ensure_utc(value)
-

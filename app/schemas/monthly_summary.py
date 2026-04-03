@@ -29,5 +29,3 @@ class MonthlyOverviewResponse(BaseModel):
 class MonthlySummaryMetaResponse(BaseModel):
     available_months: list[date]
     currencies: list[str]
-
-

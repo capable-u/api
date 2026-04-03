@@ -301,4 +301,3 @@ npx commitlint --edit .git/COMMIT_EDITMSG
 ---
 
 If repository structure or workflow changes, keep this document updated in the same PR.
-

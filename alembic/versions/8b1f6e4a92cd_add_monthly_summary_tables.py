@@ -32,7 +32,9 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_monthly_summary")),
         sa.UniqueConstraint("month", "currency", name=op.f("uq_monthly_summary_month")),
     )
-    op.create_index(op.f("ix_monthly_summary_month"), "monthly_summary", ["month"], unique=False)
+    op.create_index(
+        op.f("ix_monthly_summary_month"), "monthly_summary", ["month"], unique=False
+    )
 
     op.create_table(
         "monthly_category_summary",
@@ -51,7 +53,12 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_monthly_category_summary")),
-        sa.UniqueConstraint("month", "category_id", "currency", name=op.f("uq_monthly_category_summary_month")),
+        sa.UniqueConstraint(
+            "month",
+            "category_id",
+            "currency",
+            name=op.f("uq_monthly_category_summary_month"),
+        ),
     )
     op.create_index(
         op.f("ix_monthly_category_summary_category_id"),
@@ -59,14 +66,23 @@ def upgrade() -> None:
         ["category_id"],
         unique=False,
     )
-    op.create_index(op.f("ix_monthly_category_summary_month"), "monthly_category_summary", ["month"], unique=False)
+    op.create_index(
+        op.f("ix_monthly_category_summary_month"),
+        "monthly_category_summary",
+        ["month"],
+        unique=False,
+    )
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_monthly_category_summary_month"), table_name="monthly_category_summary")
-    op.drop_index(op.f("ix_monthly_category_summary_category_id"), table_name="monthly_category_summary")
+    op.drop_index(
+        op.f("ix_monthly_category_summary_month"), table_name="monthly_category_summary"
+    )
+    op.drop_index(
+        op.f("ix_monthly_category_summary_category_id"),
+        table_name="monthly_category_summary",
+    )
     op.drop_table("monthly_category_summary")
 
     op.drop_index(op.f("ix_monthly_summary_month"), table_name="monthly_summary")
     op.drop_table("monthly_summary")
-

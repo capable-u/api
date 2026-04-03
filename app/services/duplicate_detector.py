@@ -69,8 +69,12 @@ def _quantize_score(score: float) -> Decimal:
     return Decimal(str(round(bounded, 3)))
 
 
-def _probable_similarity_score(candidate: Transaction, raw_description: str, counterparty: str | None) -> Decimal:
-    candidate_description = candidate.raw_description or normalize_text(candidate.raw_description)
+def _probable_similarity_score(
+    candidate: Transaction, raw_description: str, counterparty: str | None
+) -> Decimal:
+    candidate_description = candidate.raw_description or normalize_text(
+        candidate.raw_description
+    )
     incoming_description = normalize_text(raw_description)
 
     description_score = _text_similarity(candidate_description, incoming_description)
@@ -81,28 +85,26 @@ def _probable_similarity_score(candidate: Transaction, raw_description: str, cou
 
 
 def _find_exact_duplicate(
-        db: Session,
-        fingerprint: str,
-        exclude_transaction_id: int | None = None,
+    db: Session,
+    fingerprint: str,
+    exclude_transaction_id: int | None = None,
 ) -> Transaction | None:
     query = select(Transaction).where(Transaction.fingerprint == fingerprint)
     if exclude_transaction_id is not None:
         query = query.where(Transaction.id != exclude_transaction_id)
 
     return db.execute(
-        query
-        .order_by(Transaction.id.asc())
-        .limit(1)
+        query.order_by(Transaction.id.asc()).limit(1)
     ).scalar_one_or_none()
 
 
 def _find_probable_candidates(
-        db: Session,
-        booking_date: date,
-        amount: Decimal,
-        currency: str,
-        direction: str,
-        exclude_transaction_id: int | None = None,
+    db: Session,
+    booking_date: date,
+    amount: Decimal,
+    currency: str,
+    direction: str,
+    exclude_transaction_id: int | None = None,
 ) -> list[Transaction]:
     from_date = booking_date - timedelta(days=PROBABLE_DATE_WINDOW_DAYS)
     to_date = booking_date + timedelta(days=PROBABLE_DATE_WINDOW_DAYS)
@@ -123,21 +125,25 @@ def _find_probable_candidates(
     if exclude_transaction_id is not None:
         conditions.append(Transaction.id != exclude_transaction_id)
 
-    return db.execute(
-        select(Transaction)
-        .where(and_(*conditions))
-        .order_by(Transaction.booking_date.desc(), Transaction.id.desc())
-        .limit(MAX_PROBABLE_CANDIDATES)
-    ).scalars().all()
+    return (
+        db.execute(
+            select(Transaction)
+            .where(and_(*conditions))
+            .order_by(Transaction.booking_date.desc(), Transaction.id.desc())
+            .limit(MAX_PROBABLE_CANDIDATES)
+        )
+        .scalars()
+        .all()
+    )
 
 
 def _find_internal_transfer_candidate(
-        db: Session,
-        booking_date: date,
-        amount: Decimal,
-        currency: str,
-        direction: str,
-        exclude_transaction_id: int | None = None,
+    db: Session,
+    booking_date: date,
+    amount: Decimal,
+    currency: str,
+    direction: str,
+    exclude_transaction_id: int | None = None,
 ) -> Transaction | None:
     opposite_direction = "income" if direction == "expense" else "expense"
     from_date = booking_date - timedelta(days=PROBABLE_DATE_WINDOW_DAYS)
@@ -169,15 +175,15 @@ def _find_internal_transfer_candidate(
 
 
 def detect_duplicate_match(
-        db: Session,
-        booking_date: date,
-        amount: Decimal,
-        currency: str,
-        direction: str,
-        raw_description: str,
-        counterparty: str | None,
-        fingerprint: str,
-        exclude_transaction_id: int | None = None,
+    db: Session,
+    booking_date: date,
+    amount: Decimal,
+    currency: str,
+    direction: str,
+    raw_description: str,
+    counterparty: str | None,
+    fingerprint: str,
+    exclude_transaction_id: int | None = None,
 ) -> DuplicateMatch:
     exact = _find_exact_duplicate(
         db,
@@ -241,5 +247,3 @@ def detect_duplicate_match(
         )
 
     return DuplicateMatch(status=DuplicateStatus.unique)
-
-

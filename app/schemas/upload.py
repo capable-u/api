@@ -31,5 +31,3 @@ class PaginatedImportJobsResponse(BaseModel):
 class DeleteImportJobResponse(BaseModel):
     id: int
     deleted: bool
-
-

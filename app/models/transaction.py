@@ -13,8 +13,12 @@ class Transaction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    import_job_id: Mapped[int] = mapped_column(ForeignKey("import_jobs.id", ondelete="CASCADE"), index=True)
-    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), index=True, nullable=True)
+    import_job_id: Mapped[int] = mapped_column(
+        ForeignKey("import_jobs.id", ondelete="CASCADE"), index=True
+    )
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="SET NULL"), index=True, nullable=True
+    )
 
     booking_date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
 
@@ -28,14 +32,22 @@ class Transaction(Base):
 
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
 
-    duplicate_status: Mapped[str] = mapped_column(String(30), default="unique", index=True, nullable=False)
+    duplicate_status: Mapped[str] = mapped_column(
+        String(30), default="unique", index=True, nullable=False
+    )
     duplicate_of_transaction_id: Mapped[int | None] = mapped_column(
         ForeignKey("transactions.id", ondelete="SET NULL"), index=True, nullable=True
     )
     duplicate_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    duplicate_score: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
+    duplicate_score: Mapped[Decimal | None] = mapped_column(
+        Numeric(4, 3), nullable=True
+    )
 
     fingerprint: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
 
-    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utc_now, onupdate=utc_now, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        UTCDateTime(), default=utc_now, onupdate=utc_now, nullable=False
+    )

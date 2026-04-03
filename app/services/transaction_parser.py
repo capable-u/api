@@ -14,7 +14,9 @@ def build_prompt(raw_text: str, categories: Sequence[tuple[int, str]]) -> str:
 
     cleaned_text = raw_text.strip()
     clipped_text = cleaned_text[:MAX_MODEL_INPUT_CHARS]
-    category_lines = "\n".join(f"- {category_id}: {name}" for category_id, name in categories)
+    category_lines = "\n".join(
+        f"- {category_id}: {name}" for category_id, name in categories
+    )
 
     return f"""{template}
 
@@ -38,8 +40,8 @@ RAW BANK STATEMENT TEXT:
 
 
 async def parse_transactions_from_text(
-        raw_text: str,
-        categories: Sequence[tuple[int, str]],
+    raw_text: str,
+    categories: Sequence[tuple[int, str]],
 ) -> ParsedTransactionsResponse:
     raw_schema = ParsedTransactionsResponse.model_json_schema()
     schema = make_openai_strict_schema(raw_schema)

@@ -5,6 +5,7 @@ Revises: 3d50bdd9ecd2
 Create Date: 2026-03-27 12:00:00.000000
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -19,9 +20,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("transactions", sa.Column("duplicate_of_transaction_id", sa.Integer(), nullable=True))
-    op.add_column("transactions", sa.Column("duplicate_reason", sa.String(length=50), nullable=True))
-    op.add_column("transactions", sa.Column("duplicate_score", sa.Numeric(precision=4, scale=3), nullable=True))
+    op.add_column(
+        "transactions",
+        sa.Column("duplicate_of_transaction_id", sa.Integer(), nullable=True),
+    )
+    op.add_column(
+        "transactions",
+        sa.Column("duplicate_reason", sa.String(length=50), nullable=True),
+    )
+    op.add_column(
+        "transactions",
+        sa.Column("duplicate_score", sa.Numeric(precision=4, scale=3), nullable=True),
+    )
 
     op.create_foreign_key(
         op.f("fk_transactions_duplicate_of_transaction_id_transactions"),
@@ -49,7 +59,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("ix_transactions_probable_lookup", table_name="transactions")
-    op.drop_index(op.f("ix_transactions_duplicate_of_transaction_id"), table_name="transactions")
+    op.drop_index(
+        op.f("ix_transactions_duplicate_of_transaction_id"), table_name="transactions"
+    )
     op.drop_constraint(
         op.f("fk_transactions_duplicate_of_transaction_id_transactions"),
         "transactions",
@@ -58,4 +70,3 @@ def downgrade() -> None:
     op.drop_column("transactions", "duplicate_score")
     op.drop_column("transactions", "duplicate_reason")
     op.drop_column("transactions", "duplicate_of_transaction_id")
-

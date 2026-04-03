@@ -24,7 +24,11 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
     month_end = next_month_start(normalized_month)
 
     db.execute(delete(MonthlySummary).where(MonthlySummary.month == normalized_month))
-    db.execute(delete(MonthlyCategorySummary).where(MonthlyCategorySummary.month == normalized_month))
+    db.execute(
+        delete(MonthlyCategorySummary).where(
+            MonthlyCategorySummary.month == normalized_month
+        )
+    )
 
     base_filters = [
         Transaction.booking_date >= normalized_month,
@@ -132,6 +136,7 @@ def rebuild_monthly_summaries_for_months(db: Session, months: set[date]) -> None
 
 
 def rebuild_all_monthly_summaries(db: Session) -> None:
-    months = set(db.execute(select(Transaction.booking_date).distinct()).scalars().all())
+    months = set(
+        db.execute(select(Transaction.booking_date).distinct()).scalars().all()
+    )
     rebuild_monthly_summaries_for_months(db=db, months=months)
-

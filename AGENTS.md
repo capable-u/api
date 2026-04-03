@@ -42,4 +42,3 @@
 - Preserve HTTP mapping: LLM/network failures => 502; other import failures => 500 (`routes_upload.py`).
 - Commit messages and PR titles follow Conventional Commits (`commitlint.config.mjs`, `.husky/commit-msg`, `.github/git-commit-instructions.md`).
 - Note: `test_main.http` currently targets old sample endpoints and is not authoritative for real routes.
-

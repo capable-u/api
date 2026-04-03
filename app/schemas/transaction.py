@@ -10,7 +10,9 @@ class ParsedTransaction(BaseModel):
     direction: str = Field(pattern="^(income|expense)$")
     counterparty: str | None = None
     raw_description: str
-    normalized_description: str | None = Field(default=None, min_length=1, max_length=180)
+    normalized_description: str | None = Field(
+        default=None, min_length=1, max_length=180
+    )
     category_id: int
     confidence: float = Field(ge=0.0, le=1.0)
 
