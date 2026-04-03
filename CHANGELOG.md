@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/capable-u/api/compare/v0.5.0...v0.6.0) (2026-04-03)
+
+
+### Features
+
+* **api:** add endpoint for monthly summary metadata retrieval ([7ce427b](https://github.com/capable-u/api/commit/7ce427b3276d4b355ae48e034dda5e9b462d3311))
+* **duplicate_detector:** enhance internal transfer detection and linking logic ([a25d5ef](https://github.com/capable-u/api/commit/a25d5eff2f8699ccb1f7e1cd0fab531cf55501f1))
+
 ## [0.5.0](https://github.com/capable-u/api/compare/v0.4.0...v0.5.0) (2026-04-02)
 
 
