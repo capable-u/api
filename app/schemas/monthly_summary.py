@@ -8,6 +8,7 @@ class MonthlySummaryRowResponse(BaseModel):
     currency: str
     income_total: float
     expense_total: float
+    transactions_count: int
 
 
 class MonthlyCategorySummaryRowResponse(BaseModel):
@@ -16,6 +17,7 @@ class MonthlyCategorySummaryRowResponse(BaseModel):
     category_id: int
     income_total: float
     expense_total: float
+    transactions_count: int
 
 
 class MonthlyOverviewResponse(BaseModel):

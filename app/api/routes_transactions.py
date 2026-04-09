@@ -248,6 +248,7 @@ def get_monthly_summary(
             MonthlyCategorySummary.category_id,
             MonthlyCategorySummary.income_total,
             MonthlyCategorySummary.expense_total,
+            MonthlyCategorySummary.transactions_count,
         )
         .where(*category_filters)
         .order_by(
@@ -267,6 +268,7 @@ def get_monthly_summary(
                 "currency": row.currency,
                 "income_total": float(row.income_total),
                 "expense_total": float(row.expense_total),
+                "transactions_count": row.transactions_count,
             }
             for row in summary_rows
         ],
@@ -277,6 +279,7 @@ def get_monthly_summary(
                 "category_id": row.category_id,
                 "income_total": float(row.income_total),
                 "expense_total": float(row.expense_total),
+                "transactions_count": row.transactions_count,
             }
             for row in category_rows
         ],

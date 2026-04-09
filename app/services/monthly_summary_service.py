@@ -58,12 +58,14 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
         ),
         0,
     )
+    transactions_count = func.count(Transaction.id)
 
     monthly_rows = db.execute(
         select(
             Transaction.currency,
             income_total.label("income_total"),
             expense_total.label("expense_total"),
+            transactions_count.label("transactions_count"),
         )
         .where(*base_filters)
         .group_by(Transaction.currency)
@@ -77,6 +79,7 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
                     currency=row.currency,
                     income_total=row.income_total,
                     expense_total=row.expense_total,
+                    transactions_count=row.transactions_count,
                 )
                 for row in monthly_rows
             ]
@@ -100,6 +103,7 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
         ),
         0,
     )
+    category_transactions_count = func.count(Transaction.id)
 
     category_rows = db.execute(
         select(
@@ -107,6 +111,7 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
             Transaction.currency,
             category_income_total.label("income_total"),
             category_expense_total.label("expense_total"),
+            category_transactions_count.label("transactions_count"),
         )
         .where(
             *base_filters,
@@ -124,6 +129,7 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
                     currency=row.currency,
                     income_total=row.income_total,
                     expense_total=row.expense_total,
+                    transactions_count=row.transactions_count,
                 )
                 for row in category_rows
             ]
