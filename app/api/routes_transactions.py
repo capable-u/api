@@ -1,7 +1,8 @@
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -158,6 +159,8 @@ def _serialize_transaction(tx: Transaction) -> dict:
 def list_transactions(
     duplicate_status: DuplicateStatus | None = Query(default=None),
     import_job_id: int | None = Query(default=None, ge=1),
+    category_ids: list[int] | None = Query(default=None),
+    query: str | None = Query(default=None, min_length=1, max_length=120),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -167,6 +170,45 @@ def list_transactions(
         filters.append(Transaction.duplicate_status == duplicate_status.value)
     if import_job_id is not None:
         filters.append(Transaction.import_job_id == import_job_id)
+    if category_ids:
+        filters.append(Transaction.category_id.in_(category_ids))
+    if query:
+        normalized_query = query.strip()
+        if normalized_query:
+            search_pattern = f"%{normalized_query}%"
+            search_conditions = [
+                cast(Transaction.id, String).ilike(search_pattern),
+                cast(Transaction.import_job_id, String).ilike(search_pattern),
+                cast(Transaction.category_id, String).ilike(search_pattern),
+                Transaction.counterparty.ilike(search_pattern),
+                Transaction.raw_description.ilike(search_pattern),
+                Transaction.normalized_description.ilike(search_pattern),
+                Transaction.currency.ilike(search_pattern),
+                Transaction.direction.ilike(search_pattern),
+                Transaction.duplicate_status.ilike(search_pattern),
+                Transaction.duplicate_reason.ilike(search_pattern),
+                cast(Transaction.duplicate_of_transaction_id, String).ilike(
+                    search_pattern
+                ),
+                cast(Transaction.duplicate_score, String).ilike(search_pattern),
+                cast(Transaction.confidence, String).ilike(search_pattern),
+                cast(Transaction.booking_date, String).ilike(search_pattern),
+                cast(Transaction.amount, String).ilike(search_pattern),
+            ]
+
+            try:
+                search_date = date.fromisoformat(normalized_query)
+                search_conditions.append(Transaction.booking_date == search_date)
+            except ValueError:
+                pass
+
+            try:
+                search_amount = Decimal(normalized_query)
+                search_conditions.append(Transaction.amount == search_amount)
+            except InvalidOperation:
+                pass
+
+            filters.append(or_(*search_conditions))
 
     query = select(Transaction)
     if filters:
