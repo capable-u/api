@@ -160,11 +160,19 @@ def list_transactions(
     duplicate_status: DuplicateStatus | None = Query(default=None),
     import_job_id: int | None = Query(default=None, ge=1),
     category_ids: list[int] | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
     query: str | None = Query(default=None, min_length=1, max_length=120),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
+    if date_from is not None and date_to is not None and date_from > date_to:
+        raise HTTPException(
+            status_code=400,
+            detail="date_from must be less than or equal to date_to",
+        )
+
     filters = []
     if duplicate_status:
         filters.append(Transaction.duplicate_status == duplicate_status.value)
@@ -172,6 +180,10 @@ def list_transactions(
         filters.append(Transaction.import_job_id == import_job_id)
     if category_ids:
         filters.append(Transaction.category_id.in_(category_ids))
+    if date_from is not None:
+        filters.append(Transaction.booking_date >= date_from)
+    if date_to is not None:
+        filters.append(Transaction.booking_date <= date_to)
     if query:
         normalized_query = query.strip()
         if normalized_query:
@@ -192,15 +204,8 @@ def list_transactions(
                 ),
                 cast(Transaction.duplicate_score, String).ilike(search_pattern),
                 cast(Transaction.confidence, String).ilike(search_pattern),
-                cast(Transaction.booking_date, String).ilike(search_pattern),
                 cast(Transaction.amount, String).ilike(search_pattern),
             ]
-
-            try:
-                search_date = date.fromisoformat(normalized_query)
-                search_conditions.append(Transaction.booking_date == search_date)
-            except ValueError:
-                pass
 
             try:
                 search_amount = Decimal(normalized_query)
