@@ -1,11 +1,35 @@
-# Test your FastAPI endpoints
-
-GET http://127.0.0.1:8000/
+# Health
+GET http://127.0.0.1:8000/health
 Accept: application/json
 
 ###
 
-GET http://127.0.0.1:8000/hello/User
+# Generate synthetic import data without LLM
+POST http://127.0.0.1:8000/generate
+Content-Type: application/json
+
+{
+  "dataset_name": "fe-be-demo",
+  "transactions_count": 300,
+  "seed": 42
+}
+
+###
+
+# List import jobs
+GET http://127.0.0.1:8000/imports?limit=20&offset=0
+Accept: application/json
+
+###
+
+# List generated transactions
+GET http://127.0.0.1:8000/transactions?limit=50&offset=0
+Accept: application/json
+
+###
+
+# Cleanup only generated imports (filename prefix: generated:)
+DELETE http://127.0.0.1:8000/imports/generated
 Accept: application/json
 
 ###

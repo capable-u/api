@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -22,6 +23,7 @@ from app.services.monthly_summary_service import (
     rebuild_monthly_summaries_for_months,
 )
 from app.schemas.common import ErrorResponse
+from app.schemas.transaction import ParsedTransaction
 from app.schemas.upload import (
     DeleteImportJobResponse,
     PaginatedImportJobsResponse,
@@ -85,6 +87,128 @@ def _link_internal_transfer_pair(
     return counterpart
 
 
+def _load_categories_or_500(db: Session) -> tuple[list[Category], set[int], Category]:
+    categories = (
+        db.execute(select(Category).order_by(Category.id.asc())).scalars().all()
+    )
+    if not categories:
+        raise HTTPException(status_code=500, detail="Categories are not initialized")
+
+    valid_category_ids = {item.id for item in categories}
+    other_category = next(
+        (item for item in categories if item.name.strip().lower() == "other"),
+        None,
+    )
+    if other_category is None:
+        raise HTTPException(
+            status_code=500, detail='Category "Other" is not configured'
+        )
+
+    return categories, valid_category_ids, other_category
+
+
+def _ingest_transactions(
+    db: Session,
+    job: ImportJob,
+    transactions: list[ParsedTransaction],
+    valid_category_ids: set[int],
+    other_category: Category,
+) -> tuple[int, int, int]:
+    job.total_transactions = len(transactions)
+
+    new_transactions = 0
+    duplicate_transactions = 0
+    needs_review_count = 0
+    affected_months: set[date] = set()
+
+    for item in transactions:
+        category_id = item.category_id
+        confidence = float(item.confidence)
+        if category_id not in valid_category_ids:
+            category_id = other_category.id
+            confidence = max(0.0, confidence - CATEGORY_CONFIDENCE_PENALTY)
+
+        normalized_currency = item.currency.strip().upper()
+        normalized_direction = item.direction.strip().lower()
+        fingerprint = build_transaction_fingerprint(
+            booking_date=item.booking_date,
+            amount=item.amount,
+            currency=normalized_currency,
+            direction=normalized_direction,
+            raw_description=item.raw_description,
+            counterparty=item.counterparty,
+        )
+        duplicate_match = detect_duplicate_match(
+            db=db,
+            booking_date=item.booking_date,
+            amount=item.amount,
+            currency=normalized_currency,
+            direction=normalized_direction,
+            raw_description=item.raw_description,
+            counterparty=item.counterparty,
+            fingerprint=fingerprint,
+        )
+
+        if (
+            duplicate_match.status.value == DuplicateStatus.duplicate_confirmed.value
+            and duplicate_match.duplicate_reason != INTERNAL_TRANSFER_REASON
+        ):
+            duplicate_transactions += 1
+            continue
+
+        tx = Transaction(
+            import_job_id=job.id,
+            booking_date=item.booking_date,
+            amount=abs(item.amount),
+            currency=normalized_currency,
+            direction=normalized_direction,
+            counterparty=item.counterparty,
+            raw_description=item.raw_description,
+            normalized_description=_resolve_normalized_description(
+                raw_description=item.raw_description,
+                llm_normalized_description=item.normalized_description,
+            ),
+            category_id=category_id,
+            confidence=confidence,
+            duplicate_status=duplicate_match.status.value,
+            duplicate_of_transaction_id=duplicate_match.duplicate_of_transaction_id,
+            duplicate_reason=duplicate_match.duplicate_reason,
+            duplicate_score=duplicate_match.duplicate_score,
+            fingerprint=fingerprint,
+        )
+        db.add(tx)
+        db.flush()
+        affected_months.add(month_start(tx.booking_date))
+
+        if (
+            duplicate_match.duplicate_reason == INTERNAL_TRANSFER_REASON
+            and duplicate_match.duplicate_of_transaction_id is not None
+        ):
+            counterpart = _link_internal_transfer_pair(
+                db=db,
+                tx=tx,
+                counterpart_id=duplicate_match.duplicate_of_transaction_id,
+                score=duplicate_match.duplicate_score,
+            )
+            if counterpart is not None:
+                affected_months.add(month_start(counterpart.booking_date))
+
+        if duplicate_match.status.value == DuplicateStatus.unique.value:
+            new_transactions += 1
+        elif duplicate_match.status.value == DuplicateStatus.possible_duplicate.value:
+            needs_review_count += 1
+        elif duplicate_match.duplicate_reason == INTERNAL_TRANSFER_REASON:
+            duplicate_transactions += 1
+
+    job.new_transactions = new_transactions
+    job.duplicate_transactions = duplicate_transactions
+    job.needs_review_count = needs_review_count
+    job.status = "needs_review" if needs_review_count > 0 else "done"
+    rebuild_monthly_summaries_for_months(db=db, months=affected_months)
+
+    return new_transactions, duplicate_transactions, needs_review_count
+
+
 @router.get("", response_model=PaginatedImportJobsResponse)
 def list_import_jobs(
     limit: int = Query(default=50, ge=1, le=200),
@@ -140,23 +264,8 @@ async def upload_statement(
     db.refresh(job)
 
     try:
-        categories = (
-            db.execute(select(Category).order_by(Category.id.asc())).scalars().all()
-        )
-        if not categories:
-            raise HTTPException(
-                status_code=500, detail="Categories are not initialized"
-            )
-
+        categories, valid_category_ids, other_category = _load_categories_or_500(db)
         category_pairs = [(item.id, item.name) for item in categories]
-        valid_category_ids = {item.id for item in categories}
-        other_category = next(
-            (item for item in categories if item.name.strip().lower() == "other"), None
-        )
-        if other_category is None:
-            raise HTTPException(
-                status_code=500, detail='Category "Other" is not configured'
-            )
 
         raw_text = extract_text_with_pypdf(str(file_path))
         job.raw_text = raw_text
@@ -165,100 +274,15 @@ async def upload_statement(
 
         parsed = await parse_transactions_from_text(raw_text, categories=category_pairs)
         job.status = "parsed_transactions"
-        job.total_transactions = len(parsed.transactions)
-
-        new_transactions = 0
-        duplicate_transactions = 0
-        needs_review_count = 0
-        affected_months: set = set()
-
-        for item in parsed.transactions:
-            category_id = item.category_id
-            confidence = float(item.confidence)
-            if category_id not in valid_category_ids:
-                category_id = other_category.id
-                confidence = max(0.0, confidence - CATEGORY_CONFIDENCE_PENALTY)
-
-            normalized_currency = item.currency.strip().upper()
-            normalized_direction = item.direction.strip().lower()
-            fingerprint = build_transaction_fingerprint(
-                booking_date=item.booking_date,
-                amount=item.amount,
-                currency=normalized_currency,
-                direction=normalized_direction,
-                raw_description=item.raw_description,
-                counterparty=item.counterparty,
-            )
-            duplicate_match = detect_duplicate_match(
+        new_transactions, duplicate_transactions, needs_review_count = (
+            _ingest_transactions(
                 db=db,
-                booking_date=item.booking_date,
-                amount=item.amount,
-                currency=normalized_currency,
-                direction=normalized_direction,
-                raw_description=item.raw_description,
-                counterparty=item.counterparty,
-                fingerprint=fingerprint,
+                job=job,
+                transactions=parsed.transactions,
+                valid_category_ids=valid_category_ids,
+                other_category=other_category,
             )
-
-            if (
-                duplicate_match.status.value
-                == DuplicateStatus.duplicate_confirmed.value
-                and duplicate_match.duplicate_reason != INTERNAL_TRANSFER_REASON
-            ):
-                duplicate_transactions += 1
-                continue
-
-            tx = Transaction(
-                import_job_id=job.id,
-                booking_date=item.booking_date,
-                amount=abs(item.amount),
-                currency=normalized_currency,
-                direction=normalized_direction,
-                counterparty=item.counterparty,
-                raw_description=item.raw_description,
-                normalized_description=_resolve_normalized_description(
-                    raw_description=item.raw_description,
-                    llm_normalized_description=item.normalized_description,
-                ),
-                category_id=category_id,
-                confidence=confidence,
-                duplicate_status=duplicate_match.status.value,
-                duplicate_of_transaction_id=duplicate_match.duplicate_of_transaction_id,
-                duplicate_reason=duplicate_match.duplicate_reason,
-                duplicate_score=duplicate_match.duplicate_score,
-                fingerprint=fingerprint,
-            )
-            db.add(tx)
-            db.flush()
-            affected_months.add(month_start(tx.booking_date))
-
-            if (
-                duplicate_match.duplicate_reason == INTERNAL_TRANSFER_REASON
-                and duplicate_match.duplicate_of_transaction_id is not None
-            ):
-                counterpart = _link_internal_transfer_pair(
-                    db=db,
-                    tx=tx,
-                    counterpart_id=duplicate_match.duplicate_of_transaction_id,
-                    score=duplicate_match.duplicate_score,
-                )
-                if counterpart is not None:
-                    affected_months.add(month_start(counterpart.booking_date))
-
-            if duplicate_match.status.value == DuplicateStatus.unique.value:
-                new_transactions += 1
-            elif (
-                duplicate_match.status.value == DuplicateStatus.possible_duplicate.value
-            ):
-                needs_review_count += 1
-            elif duplicate_match.duplicate_reason == INTERNAL_TRANSFER_REASON:
-                duplicate_transactions += 1
-
-        job.new_transactions = new_transactions
-        job.duplicate_transactions = duplicate_transactions
-        job.needs_review_count = needs_review_count
-        job.status = "needs_review" if needs_review_count > 0 else "done"
-        rebuild_monthly_summaries_for_months(db=db, months=affected_months)
+        )
         db.commit()
 
         return {
