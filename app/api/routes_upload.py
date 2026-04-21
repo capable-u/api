@@ -18,7 +18,11 @@ from app.services.duplicate_detector import (
 )
 from app.services.fingerprint import build_transaction_fingerprint, normalize_text
 from app.services.llm_client import LLMClientError
-from app.services.exchange_rate_service import load_rates_lookup, resolve_amount_base
+from app.services.exchange_rate_service import (
+    ensure_rates_for_currencies,
+    load_rates_lookup,
+    resolve_amount_base,
+)
 from app.services.monthly_summary_service import (
     month_start,
     rebuild_monthly_summaries_for_months,
@@ -128,6 +132,17 @@ def _ingest_transactions(
         for item in transactions
         if item.currency.strip().upper() != base_currency
     }
+
+    if unique_currencies and transactions:
+        all_dates = [item.booking_date for item in transactions]
+        ensure_rates_for_currencies(
+            db=db,
+            base=base_currency,
+            currencies=unique_currencies,
+            start_date=min(all_dates),
+            end_date=max(all_dates),
+        )
+
     rates_lookup = load_rates_lookup(
         db=db, base=base_currency, currencies=unique_currencies
     )
