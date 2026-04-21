@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes_exchange_rates import router as exchange_rates_router
 from app.api.routes_test_data import router as test_data_router
 from app.api.routes_upload import router as upload_router
 from app.api.routes_transactions import router as transactions_router
@@ -22,6 +23,7 @@ app.include_router(upload_router)
 app.include_router(test_data_router)
 app.include_router(transactions_router)
 app.include_router(categories_router)
+app.include_router(exchange_rates_router)
 
 
 @app.get("/health", response_model=HealthResponse)
