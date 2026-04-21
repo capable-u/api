@@ -12,6 +12,65 @@ from app.models.transaction import Transaction
 
 FRANKFURTER_BASE_URL = "https://api.frankfurter.dev/v2"
 
+# ---------------------------------------------------------------------------
+# Rate lookup helpers (used during transaction ingestion)
+# ---------------------------------------------------------------------------
+
+
+def load_rates_lookup(
+    db: Session,
+    base: str,
+    currencies: set[str],
+) -> dict[str, list[tuple[date, Decimal]]]:
+    """Return {target_currency: [(date, rate), ...]} sorted by date ascending."""
+    if not currencies:
+        return {}
+    rows = db.execute(
+        select(ExchangeRate.target_currency, ExchangeRate.date, ExchangeRate.rate)
+        .where(
+            ExchangeRate.base_currency == base,
+            ExchangeRate.target_currency.in_(currencies),
+        )
+        .order_by(ExchangeRate.date.asc())
+    ).all()
+    lookup: dict[str, list[tuple[date, Decimal]]] = {}
+    for row in rows:
+        lookup.setdefault(row.target_currency, []).append((row.date, row.rate))
+    return lookup
+
+
+def resolve_amount_base(
+    amount: Decimal,
+    currency: str,
+    booking_date: date,
+    base: str,
+    rates_lookup: dict[str, list[tuple[date, Decimal]]],
+) -> Decimal | None:
+    """Convert amount to base currency using the most recent available rate.
+
+    The rate table stores base→target rates, so to convert target→base we invert:
+        base_amount = target_amount / rate
+    """
+    if currency == base:
+        return amount
+
+    entries = rates_lookup.get(currency)
+    if not entries:
+        return None
+
+    # Entries sorted ascending by date; find the last one on or before booking_date.
+    rate: Decimal | None = None
+    for entry_date, entry_rate in entries:
+        if entry_date <= booking_date:
+            rate = entry_rate
+        else:
+            break
+
+    if rate is None:
+        return None
+
+    return (amount / rate).quantize(Decimal("0.01"))
+
 
 def _fetch_rates(
     base: str,

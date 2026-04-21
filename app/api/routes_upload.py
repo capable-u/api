@@ -18,6 +18,7 @@ from app.services.duplicate_detector import (
 )
 from app.services.fingerprint import build_transaction_fingerprint, normalize_text
 from app.services.llm_client import LLMClientError
+from app.services.exchange_rate_service import load_rates_lookup, resolve_amount_base
 from app.services.monthly_summary_service import (
     month_start,
     rebuild_monthly_summaries_for_months,
@@ -121,6 +122,16 @@ def _ingest_transactions(
     needs_review_count = 0
     affected_months: set[date] = set()
 
+    base_currency = settings.base_currency
+    unique_currencies = {
+        item.currency.strip().upper()
+        for item in transactions
+        if item.currency.strip().upper() != base_currency
+    }
+    rates_lookup = load_rates_lookup(
+        db=db, base=base_currency, currencies=unique_currencies
+    )
+
     for item in transactions:
         category_id = item.category_id
         confidence = float(item.confidence)
@@ -156,10 +167,20 @@ def _ingest_transactions(
             duplicate_transactions += 1
             continue
 
+        absolute_amount = abs(item.amount)
+        amount_base = resolve_amount_base(
+            amount=absolute_amount,
+            currency=normalized_currency,
+            booking_date=item.booking_date,
+            base=base_currency,
+            rates_lookup=rates_lookup,
+        )
+
         tx = Transaction(
             import_job_id=job.id,
             booking_date=item.booking_date,
-            amount=abs(item.amount),
+            amount=absolute_amount,
+            amount_base=amount_base,
             currency=normalized_currency,
             direction=normalized_direction,
             counterparty=item.counterparty,

@@ -3,6 +3,7 @@ from datetime import date
 from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.enums import Direction, DuplicateStatus
 from app.models.monthly_category_summary import MonthlyCategorySummary
 from app.models.monthly_summary import MonthlySummary
@@ -22,6 +23,7 @@ def next_month_start(value: date) -> date:
 def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
     normalized_month = month_start(month)
     month_end = next_month_start(normalized_month)
+    base_currency = settings.base_currency
 
     db.execute(delete(MonthlySummary).where(MonthlySummary.month == normalized_month))
     db.execute(
@@ -38,12 +40,16 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
             Transaction.duplicate_reason.is_(None),
             Transaction.duplicate_reason != "internal_transfer",
         ),
+        Transaction.amount_base.is_not(None),
     ]
 
     income_total = func.coalesce(
         func.sum(
             case(
-                (Transaction.direction == Direction.income.value, Transaction.amount),
+                (
+                    Transaction.direction == Direction.income.value,
+                    Transaction.amount_base,
+                ),
                 else_=0,
             )
         ),
@@ -52,7 +58,10 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
     expense_total = func.coalesce(
         func.sum(
             case(
-                (Transaction.direction == Direction.expense.value, Transaction.amount),
+                (
+                    Transaction.direction == Direction.expense.value,
+                    Transaction.amount_base,
+                ),
                 else_=0,
             )
         ),
@@ -60,35 +69,32 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
     )
     transactions_count = func.count(Transaction.id)
 
-    monthly_rows = db.execute(
+    monthly_row = db.execute(
         select(
-            Transaction.currency,
             income_total.label("income_total"),
             expense_total.label("expense_total"),
             transactions_count.label("transactions_count"),
-        )
-        .where(*base_filters)
-        .group_by(Transaction.currency)
-    ).all()
+        ).where(*base_filters)
+    ).one()
 
-    if monthly_rows:
-        db.add_all(
-            [
-                MonthlySummary(
-                    month=normalized_month,
-                    currency=row.currency,
-                    income_total=row.income_total,
-                    expense_total=row.expense_total,
-                    transactions_count=row.transactions_count,
-                )
-                for row in monthly_rows
-            ]
+    if monthly_row.transactions_count > 0:
+        db.add(
+            MonthlySummary(
+                month=normalized_month,
+                currency=base_currency,
+                income_total=monthly_row.income_total,
+                expense_total=monthly_row.expense_total,
+                transactions_count=monthly_row.transactions_count,
+            )
         )
 
     category_income_total = func.coalesce(
         func.sum(
             case(
-                (Transaction.direction == Direction.income.value, Transaction.amount),
+                (
+                    Transaction.direction == Direction.income.value,
+                    Transaction.amount_base,
+                ),
                 else_=0,
             )
         ),
@@ -97,7 +103,10 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
     category_expense_total = func.coalesce(
         func.sum(
             case(
-                (Transaction.direction == Direction.expense.value, Transaction.amount),
+                (
+                    Transaction.direction == Direction.expense.value,
+                    Transaction.amount_base,
+                ),
                 else_=0,
             )
         ),
@@ -108,7 +117,6 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
     category_rows = db.execute(
         select(
             Transaction.category_id,
-            Transaction.currency,
             category_income_total.label("income_total"),
             category_expense_total.label("expense_total"),
             category_transactions_count.label("transactions_count"),
@@ -117,7 +125,7 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
             *base_filters,
             Transaction.category_id.is_not(None),
         )
-        .group_by(Transaction.category_id, Transaction.currency)
+        .group_by(Transaction.category_id)
     ).all()
 
     if category_rows:
@@ -126,7 +134,7 @@ def rebuild_monthly_summaries_for_month(db: Session, month: date) -> None:
                 MonthlyCategorySummary(
                     month=normalized_month,
                     category_id=row.category_id,
-                    currency=row.currency,
+                    currency=base_currency,
                     income_total=row.income_total,
                     expense_total=row.expense_total,
                     transactions_count=row.transactions_count,

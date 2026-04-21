@@ -30,6 +30,8 @@ class Transaction(Base):
     raw_description: Mapped[str] = mapped_column(Text, nullable=False)
     normalized_description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    amount_base: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
 
     duplicate_status: Mapped[str] = mapped_column(
