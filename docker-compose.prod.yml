@@ -1,15 +1,22 @@
+x-common-env: &common-env
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  REDIS_URL: redis://redis:6379/0
+  OPENAI_API_KEY: ${OPENAI_API_KEY}
+  OPENAI_MODEL: ${OPENAI_MODEL}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL}
+
 services:
   db:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-capable_u}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-capable_u}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -24,7 +31,7 @@ services:
       retries: 10
 
   api:
-    image: ${API_IMAGE:-ghcr.io/capable-u/api:latest}
+    image: ${API_IMAGE}
     depends_on:
       db:
         condition: service_healthy
@@ -38,17 +45,13 @@ services:
       python -m app.core.seed_categories &&
       exec uvicorn main:app --host 0.0.0.0 --port 8000"
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-capable_u}
-      UPLOAD_DIR: ${UPLOAD_DIR:-/data/uploads}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-mini}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      REDIS_URL: redis://redis:6379/0
+      <<: *common-env
+      UPLOAD_DIR: ${UPLOAD_DIR}
     volumes:
       - uploads_data:/data/uploads
 
   worker:
-    image: ${API_IMAGE:-ghcr.io/capable-u/api:latest}
+    image: ${API_IMAGE}
     depends_on:
       db:
         condition: service_healthy
@@ -57,25 +60,22 @@ services:
     restart: unless-stopped
     command: celery -A app.worker.celery_app:celery_app worker --loglevel=info
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-capable_u}
-      UPLOAD_DIR: ${UPLOAD_DIR:-/data/uploads}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-mini}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      REDIS_URL: redis://redis:6379/0
+      <<: *common-env
+      UPLOAD_DIR: ${UPLOAD_DIR}
     volumes:
       - uploads_data:/data/uploads
 
   beat:
-    image: ${API_IMAGE:-ghcr.io/capable-u/api:latest}
+    image: ${API_IMAGE}
     depends_on:
       redis:
+        condition: service_healthy
+      db:
         condition: service_healthy
     restart: unless-stopped
     command: celery -A app.worker.celery_app:celery_app beat --loglevel=info
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-capable_u}
-      REDIS_URL: redis://redis:6379/0
+      <<: *common-env
 
 volumes:
   postgres_data:
