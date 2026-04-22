@@ -1,7 +1,9 @@
+import json
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import httpx
+import redis
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -12,29 +14,32 @@ from app.models.transaction import Transaction
 
 FRANKFURTER_BASE_URL = "https://api.frankfurter.dev/v2"
 
-# ---------------------------------------------------------------------------
-# Currency list (cached 24 h)
-# ---------------------------------------------------------------------------
+_CURRENCIES_REDIS_KEY = "capable_u:currencies"
+_CURRENCIES_CACHE_TTL_SECS = 86400  # 24 h
 
-_currencies_cache: set[str] | None = None
-_currencies_cache_ts: datetime | None = None
-_CURRENCIES_CACHE_TTL = timedelta(hours=24)
+_redis_client: redis.Redis | None = None
+
+
+def _get_redis() -> redis.Redis:
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    return _redis_client
 
 
 def fetch_available_currencies() -> set[str]:
-    """Return valid ISO currency codes from Frankfurter. Cached for 24 h."""
-    global _currencies_cache, _currencies_cache_ts
-    now = datetime.now(tz=timezone.utc)
-    if (
-        _currencies_cache is None
-        or _currencies_cache_ts is None
-        or (now - _currencies_cache_ts) > _CURRENCIES_CACHE_TTL
-    ):
-        response = httpx.get(f"{FRANKFURTER_BASE_URL}/currencies", timeout=10)
-        response.raise_for_status()
-        _currencies_cache = {item["iso_code"] for item in response.json()}
-        _currencies_cache_ts = now
-    return _currencies_cache
+    """Return valid ISO currency codes from Frankfurter. Cached in Redis for 24 h."""
+    r = _get_redis()
+    cached = r.get(_CURRENCIES_REDIS_KEY)
+    if cached:
+        return set(json.loads(cached))
+    response = httpx.get(f"{FRANKFURTER_BASE_URL}/currencies", timeout=10)
+    response.raise_for_status()
+    currencies = {item["iso_code"] for item in response.json()}
+    r.setex(
+        _CURRENCIES_REDIS_KEY, _CURRENCIES_CACHE_TTL_SECS, json.dumps(list(currencies))
+    )
+    return currencies
 
 
 # ---------------------------------------------------------------------------

@@ -4,10 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.routes_upload import (
-    _ingest_transactions,
-    _load_categories_or_500,
-)
 from app.core.db import get_db
 from app.models.import_job import ImportJob
 from app.models.transaction import Transaction
@@ -17,6 +13,7 @@ from app.schemas.upload import (
     GenerateImportDataRequest,
     UploadStatementResponse,
 )
+from app.services.import_pipeline import ingest_transactions, load_categories
 from app.services.monthly_summary_service import rebuild_monthly_summaries_for_months
 from app.services.synthetic_data_generator import (
     SyntheticGenerationConfig,
@@ -37,7 +34,10 @@ def generate_statement_data(
     payload: GenerateImportDataRequest,
     db: Session = Depends(get_db),
 ):
-    categories, valid_category_ids, other_category = _load_categories_or_500(db)
+    try:
+        categories, valid_category_ids, other_category = load_categories(db)
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
     category_ids = [item.id for item in categories]
 
     dataset_label = payload.dataset_name or "dataset"
@@ -69,7 +69,7 @@ def generate_statement_data(
 
         job.status = "parsed_transactions"
         new_transactions, duplicate_transactions, needs_review_count = (
-            _ingest_transactions(
+            ingest_transactions(
                 db=db,
                 job=job,
                 transactions=generated_transactions,

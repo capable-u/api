@@ -14,10 +14,21 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     image: ${API_IMAGE:-ghcr.io/capable-u/api:latest}
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
     ports:
@@ -32,8 +43,39 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-mini}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - uploads_data:/data/uploads
+
+  worker:
+    image: ${API_IMAGE:-ghcr.io/capable-u/api:latest}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    command: celery -A app.worker.celery_app:celery_app worker --loglevel=info
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-capable_u}
+      UPLOAD_DIR: ${UPLOAD_DIR:-/data/uploads}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - uploads_data:/data/uploads
+
+  beat:
+    image: ${API_IMAGE:-ghcr.io/capable-u/api:latest}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    command: celery -A app.worker.celery_app:celery_app beat --loglevel=info
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-capable_u}
+      REDIS_URL: redis://redis:6379/0
 
 volumes:
   postgres_data:

@@ -12,6 +12,8 @@ class Settings(BaseSettings):
 
     base_currency: str = "EUR"
 
+    redis_url: str = "redis://redis:6379/0"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

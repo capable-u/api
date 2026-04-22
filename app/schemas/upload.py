@@ -11,6 +11,11 @@ class UploadStatementResponse(BaseModel):
     needs_review_count: int
 
 
+class EnqueuedImportResponse(BaseModel):
+    import_job_id: int
+    status: str
+
+
 class ImportJobResponse(BaseModel):
     id: int
     filename: str
