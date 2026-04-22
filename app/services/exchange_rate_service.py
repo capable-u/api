@@ -55,7 +55,12 @@ def _fetch_rates(
 ) -> list[dict]:
     response = httpx.get(
         f"{FRANKFURTER_BASE_URL}/rates",
-        params={"base": base, "from": str(start_date), "to": str(end_date)},
+        params={
+            "base": base,
+            "from": str(start_date),
+            "to": str(end_date),
+            "quotes": ",".join(sorted(targets)),
+        },
         timeout=30,
     )
     response.raise_for_status()
