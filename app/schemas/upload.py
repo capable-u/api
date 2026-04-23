@@ -1,17 +1,10 @@
 from datetime import date
-from enum import Enum
 
 from pydantic import AwareDatetime, BaseModel, Field
 
+from app.models.enums import ImportJobStatus
 
-class ImportJobStatus(str, Enum):
-    uploaded = "uploaded"
-    parsed_text = "parsed_text"
-    parsed_transactions = "parsed_transactions"
-    done = "done"
-    needs_review = "needs_review"
-    failed = "failed"
-    llm_failed = "llm_failed"
+__all__ = ["ImportJobStatus"]
 
 
 class UploadStatementResponse(BaseModel):

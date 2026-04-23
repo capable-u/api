@@ -8,10 +8,10 @@ from app.core.db import get_db
 from app.models.import_job import ImportJob
 from app.models.transaction import Transaction
 from app.schemas.common import ErrorResponse
+from app.models.enums import ImportJobStatus
 from app.schemas.upload import (
     CleanupGeneratedImportsResponse,
     GenerateImportDataRequest,
-    ImportJobStatus,
     UploadStatementResponse,
 )
 from app.services.import_pipeline import ingest_transactions, load_categories

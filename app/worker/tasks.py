@@ -3,8 +3,8 @@ import logging
 
 from app.worker.celery_app import celery_app
 from app.core.db import SessionLocal
+from app.models.enums import ImportJobStatus
 from app.models.import_job import ImportJob
-from app.schemas.upload import ImportJobStatus
 from app.services.exchange_rate_service import update_exchange_rates
 from app.services.import_pipeline import ingest_transactions, load_categories
 from app.services.llm_client import LLMClientError

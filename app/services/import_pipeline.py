@@ -4,9 +4,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.models.category import Category
-from app.models.enums import DuplicateStatus
+from app.models.enums import DuplicateStatus, ImportJobStatus
 from app.models.import_job import ImportJob
-from app.schemas.upload import ImportJobStatus
 from app.models.transaction import Transaction
 from app.schemas.transaction import ParsedTransaction
 from app.services.duplicate_detector import (

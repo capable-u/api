@@ -6,6 +6,29 @@ class LLMClientError(RuntimeError):
     pass
 
 
+def make_openai_strict_schema(schema: dict) -> dict:
+    """Adapts a Pydantic JSON Schema to OpenAI Structured Outputs format."""
+
+    def transform(node: dict) -> dict:
+        if not isinstance(node, dict):
+            return node
+        for key, value in list(node.items()):
+            if isinstance(value, dict):
+                node[key] = transform(value)
+            elif isinstance(value, list):
+                node[key] = [
+                    transform(item) if isinstance(item, dict) else item
+                    for item in value
+                ]
+        if node.get("type") == "object" and "properties" in node:
+            props = node["properties"]
+            node["required"] = list(props.keys())
+            node["additionalProperties"] = False
+        return node
+
+    return transform(schema)
+
+
 async def openai_chat_json(prompt: str, schema: dict) -> dict:
     payload = {
         "model": settings.openai_model,

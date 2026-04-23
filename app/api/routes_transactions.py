@@ -7,13 +7,12 @@ from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.models.enums import DuplicateStatus
+from app.models.enums import DuplicateStatus, ImportJobStatus
 from app.models.import_job import ImportJob
 from app.models.monthly_category_summary import MonthlyCategorySummary
 from app.models.monthly_summary import MonthlySummary
 from app.models.transaction import Transaction
 from app.schemas.common import ErrorResponse
-from app.schemas.upload import ImportJobStatus
 from app.schemas.monthly_summary import (
     MonthlyOverviewResponse,
     MonthlySummaryMetaResponse,
