@@ -13,6 +13,7 @@ from app.models.monthly_category_summary import MonthlyCategorySummary
 from app.models.monthly_summary import MonthlySummary
 from app.models.transaction import Transaction
 from app.schemas.common import ErrorResponse
+from app.schemas.upload import ImportJobStatus
 from app.schemas.monthly_summary import (
     MonthlyOverviewResponse,
     MonthlySummaryMetaResponse,
@@ -64,7 +65,11 @@ def _apply_review_job_counters(
     else:
         job.new_transactions += 1
 
-    job.status = "needs_review" if job.needs_review_count > 0 else "done"
+    job.status = (
+        ImportJobStatus.needs_review
+        if job.needs_review_count > 0
+        else ImportJobStatus.done
+    )
 
 
 def _apply_delete_job_counters(job: ImportJob | None, tx: Transaction) -> None:
@@ -78,7 +83,11 @@ def _apply_delete_job_counters(job: ImportJob | None, tx: Transaction) -> None:
     elif tx.duplicate_status == DuplicateStatus.possible_duplicate.value:
         job.needs_review_count = max(0, job.needs_review_count - 1)
 
-    job.status = "needs_review" if job.needs_review_count > 0 else "done"
+    job.status = (
+        ImportJobStatus.needs_review
+        if job.needs_review_count > 0
+        else ImportJobStatus.done
+    )
 
 
 def _reset_duplicate_metadata(tx: Transaction) -> None:

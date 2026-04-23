@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.models.category import Category
 from app.models.enums import DuplicateStatus
 from app.models.import_job import ImportJob
+from app.schemas.upload import ImportJobStatus
 from app.models.transaction import Transaction
 from app.schemas.transaction import ParsedTransaction
 from app.services.duplicate_detector import (
@@ -201,7 +202,9 @@ def ingest_transactions(
     job.new_transactions = new_transactions
     job.duplicate_transactions = duplicate_transactions
     job.needs_review_count = needs_review_count
-    job.status = "needs_review" if needs_review_count > 0 else "done"
+    job.status = (
+        ImportJobStatus.needs_review if needs_review_count > 0 else ImportJobStatus.done
+    )
     rebuild_monthly_summaries_for_months(db=db, months=affected_months)
 
     return new_transactions, duplicate_transactions, needs_review_count

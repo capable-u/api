@@ -16,12 +16,20 @@ from app.schemas.common import ErrorResponse
 from app.schemas.upload import (
     DeleteImportJobResponse,
     EnqueuedImportResponse,
+    ImportJobStatus,
     PaginatedImportJobsResponse,
 )
 from app.services.monthly_summary_service import rebuild_monthly_summaries_for_months
 from app.worker.tasks import process_import_job
 
-_TERMINAL_STATUSES = frozenset({"done", "needs_review", "llm_failed", "failed"})
+_TERMINAL_STATUSES = frozenset(
+    {
+        ImportJobStatus.done,
+        ImportJobStatus.needs_review,
+        ImportJobStatus.llm_failed,
+        ImportJobStatus.failed,
+    }
+)
 _SSE_POLL_INTERVAL = 1.5
 _SSE_TIMEOUT_SECS = 600
 
@@ -143,14 +151,14 @@ async def upload_statement(
     content = await file.read()
     file_path.write_bytes(content)
 
-    job = ImportJob(filename=file.filename, status="queued")
+    job = ImportJob(filename=file.filename, status=ImportJobStatus.uploaded)
     db.add(job)
     db.commit()
     db.refresh(job)
 
     process_import_job.delay(job.id, str(file_path))
 
-    return {"import_job_id": job.id, "status": "queued"}
+    return {"import_job_id": job.id, "status": ImportJobStatus.uploaded}
 
 
 @router.delete(

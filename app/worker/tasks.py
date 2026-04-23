@@ -4,6 +4,7 @@ import logging
 from app.worker.celery_app import celery_app
 from app.core.db import SessionLocal
 from app.models.import_job import ImportJob
+from app.schemas.upload import ImportJobStatus
 from app.services.exchange_rate_service import update_exchange_rates
 from app.services.import_pipeline import ingest_transactions, load_categories
 from app.services.llm_client import LLMClientError
@@ -28,13 +29,13 @@ def process_import_job(self, import_job_id: int, file_path: str) -> dict:
 
             raw_text = extract_text_with_pypdf(file_path)
             job.raw_text = raw_text
-            job.status = "parsed_text"
+            job.status = ImportJobStatus.parsed_text
             db.commit()
 
             parsed = asyncio.run(
                 parse_transactions_from_text(raw_text, categories=category_pairs)
             )
-            job.status = "parsed_transactions"
+            job.status = ImportJobStatus.parsed_transactions
             new_transactions, duplicate_transactions, needs_review_count = (
                 ingest_transactions(
                     db=db,
@@ -55,7 +56,7 @@ def process_import_job(self, import_job_id: int, file_path: str) -> dict:
 
         except LLMClientError as e:
             db.rollback()
-            job.status = "llm_failed"
+            job.status = ImportJobStatus.llm_failed
             db.add(job)
             db.commit()
             logger.error("LLM error for job %s: %s", import_job_id, e)
@@ -63,7 +64,7 @@ def process_import_job(self, import_job_id: int, file_path: str) -> dict:
 
         except Exception as e:
             db.rollback()
-            job.status = "failed"
+            job.status = ImportJobStatus.failed
             db.add(job)
             db.commit()
             logger.error("Pipeline error for job %s: %s", import_job_id, e)

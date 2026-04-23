@@ -11,6 +11,7 @@ from app.schemas.common import ErrorResponse
 from app.schemas.upload import (
     CleanupGeneratedImportsResponse,
     GenerateImportDataRequest,
+    ImportJobStatus,
     UploadStatementResponse,
 )
 from app.services.import_pipeline import ingest_transactions, load_categories
@@ -44,7 +45,7 @@ def generate_statement_data(
     run_id = uuid.uuid4().hex[:8]
     synthetic_filename = f"{GENERATED_FILENAME_PREFIX}{dataset_label}_{payload.transactions_count}_{run_id}.pdf"
 
-    job = ImportJob(filename=synthetic_filename, status="uploaded")
+    job = ImportJob(filename=synthetic_filename, status=ImportJobStatus.uploaded)
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -64,10 +65,10 @@ def generate_statement_data(
             "Synthetic import generated without LLM. "
             f"seed={payload.seed} count={payload.transactions_count}"
         )
-        job.status = "parsed_text"
+        job.status = ImportJobStatus.parsed_text
         db.commit()
 
-        job.status = "parsed_transactions"
+        job.status = ImportJobStatus.parsed_transactions
         new_transactions, duplicate_transactions, needs_review_count = (
             ingest_transactions(
                 db=db,
@@ -89,7 +90,7 @@ def generate_statement_data(
 
     except Exception as e:
         db.rollback()
-        job.status = "failed"
+        job.status = ImportJobStatus.failed
         db.add(job)
         db.commit()
         raise HTTPException(status_code=500, detail=f"Generation failed: {e}") from e
