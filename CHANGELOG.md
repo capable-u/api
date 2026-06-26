@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.0](https://github.com/capable-u/api/compare/v0.6.0...v0.7.0) (2026-06-26)
+
+
+### Features
+
+* **categories:** Add color and updated_at fields to category model and endpoints ([#11](https://github.com/capable-u/api/issues/11)) ([a975e59](https://github.com/capable-u/api/commit/a975e5998ac0005ded8a542208255721e2e7b35d))
+* **monthly_summary:** add transactions_count field to monthly summaries ([6d379fa](https://github.com/capable-u/api/commit/6d379fa1c87d41c340adae7dd227d44638ec3cc2))
+* **test-data:** add synthetic data generation endpoint and cleanup functionality ([09ffe8e](https://github.com/capable-u/api/commit/09ffe8e89378a81109911836e0bf8298254ccc2a))
+* **transactions:** add date filtering for transaction listing ([ac95db4](https://github.com/capable-u/api/commit/ac95db4330f30b646ab62051bd3b0e335c3a1857))
+* **transactions:** add filtering and search capabilities for transaction listing ([a0d5131](https://github.com/capable-u/api/commit/a0d5131e0ba7b537fb679801cee39ca6b2c931bd))
+
 ## [0.6.0](https://github.com/capable-u/api/compare/v0.5.0...v0.6.0) (2026-04-03)
 
 
