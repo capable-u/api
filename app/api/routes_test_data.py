@@ -4,19 +4,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.routes_upload import (
-    _ingest_transactions,
-    _load_categories_or_500,
-)
 from app.core.db import get_db
 from app.models.import_job import ImportJob
 from app.models.transaction import Transaction
 from app.schemas.common import ErrorResponse
+from app.models.enums import ImportJobStatus
 from app.schemas.upload import (
     CleanupGeneratedImportsResponse,
     GenerateImportDataRequest,
     UploadStatementResponse,
 )
+from app.services.import_pipeline import ingest_transactions, load_categories
 from app.services.monthly_summary_service import rebuild_monthly_summaries_for_months
 from app.services.synthetic_data_generator import (
     SyntheticGenerationConfig,
@@ -37,14 +35,17 @@ def generate_statement_data(
     payload: GenerateImportDataRequest,
     db: Session = Depends(get_db),
 ):
-    categories, valid_category_ids, other_category = _load_categories_or_500(db)
+    try:
+        categories, valid_category_ids, other_category = load_categories(db)
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
     category_ids = [item.id for item in categories]
 
     dataset_label = payload.dataset_name or "dataset"
     run_id = uuid.uuid4().hex[:8]
     synthetic_filename = f"{GENERATED_FILENAME_PREFIX}{dataset_label}_{payload.transactions_count}_{run_id}.pdf"
 
-    job = ImportJob(filename=synthetic_filename, status="uploaded")
+    job = ImportJob(filename=synthetic_filename, status=ImportJobStatus.uploaded)
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -64,12 +65,12 @@ def generate_statement_data(
             "Synthetic import generated without LLM. "
             f"seed={payload.seed} count={payload.transactions_count}"
         )
-        job.status = "parsed_text"
+        job.status = ImportJobStatus.parsed_text
         db.commit()
 
-        job.status = "parsed_transactions"
+        job.status = ImportJobStatus.parsed_transactions
         new_transactions, duplicate_transactions, needs_review_count = (
-            _ingest_transactions(
+            ingest_transactions(
                 db=db,
                 job=job,
                 transactions=generated_transactions,
@@ -89,7 +90,7 @@ def generate_statement_data(
 
     except Exception as e:
         db.rollback()
-        job.status = "failed"
+        job.status = ImportJobStatus.failed
         db.add(job)
         db.commit()
         raise HTTPException(status_code=500, detail=f"Generation failed: {e}") from e

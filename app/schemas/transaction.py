@@ -23,12 +23,12 @@ class ParsedTransactionsResponse(BaseModel):
 
 class TransactionUpdateRequest(BaseModel):
     booking_date: date | None = None
-    amount: Decimal | None = None
-    currency: str | None = None
+    amount: Decimal | None = Field(default=None, gt=0)
+    currency: str | None = Field(default=None, min_length=3, max_length=10)
     direction: str | None = Field(default=None, pattern="^(income|expense)$")
     counterparty: str | None = None
     normalized_description: str | None = None
-    category_id: int | None = None
+    category_id: int | None = Field(default=None, gt=0)
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
 

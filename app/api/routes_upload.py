@@ -1,38 +1,46 @@
-from datetime import date
+import asyncio
+import json
+from datetime import datetime
 from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.category import Category
-from app.core.db import get_db
 from app.core.config import settings
-from app.models.enums import DuplicateStatus
+from app.core.db import SessionLocal, get_db
 from app.models.import_job import ImportJob
 from app.models.transaction import Transaction
-from app.services.pdf_extract import extract_text_with_pypdf
-from app.services.transaction_parser import parse_transactions_from_text
-from app.services.duplicate_detector import (
-    INTERNAL_TRANSFER_REASON,
-    detect_duplicate_match,
-)
-from app.services.fingerprint import build_transaction_fingerprint, normalize_text
-from app.services.llm_client import LLMClientError
-from app.services.monthly_summary_service import (
-    month_start,
-    rebuild_monthly_summaries_for_months,
-)
 from app.schemas.common import ErrorResponse
-from app.schemas.transaction import ParsedTransaction
+from app.models.enums import ImportJobStatus
 from app.schemas.upload import (
     DeleteImportJobResponse,
+    EnqueuedImportResponse,
     PaginatedImportJobsResponse,
-    UploadStatementResponse,
 )
+from app.services.monthly_summary_service import rebuild_monthly_summaries_for_months
+from app.worker.tasks import process_import_job
+
+_TERMINAL_STATUSES = frozenset(
+    {
+        ImportJobStatus.done,
+        ImportJobStatus.needs_review,
+        ImportJobStatus.llm_failed,
+        ImportJobStatus.failed,
+    }
+)
+_SSE_POLL_INTERVAL = 1.5
+_SSE_TIMEOUT_SECS = 600
+
+
+def _sse_json_default(obj):
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Not serializable: {type(obj)}")
+
 
 router = APIRouter(prefix="/imports", tags=["imports"])
-
-CATEGORY_CONFIDENCE_PENALTY = 0.35
 
 
 def _get_import_job_or_404(db: Session, import_job_id: int) -> ImportJob:
@@ -54,159 +62,6 @@ def _serialize_import_job(job: ImportJob) -> dict:
         "created_at": job.created_at,
         "updated_at": job.updated_at,
     }
-
-
-def _resolve_normalized_description(
-    raw_description: str, llm_normalized_description: str | None
-) -> str:
-    if llm_normalized_description:
-        cleaned = " ".join(llm_normalized_description.split()).strip()
-        if cleaned:
-            return cleaned
-    return normalize_text(raw_description)
-
-
-def _link_internal_transfer_pair(
-    db: Session, tx: Transaction, counterpart_id: int, score
-) -> Transaction | None:
-    counterpart = db.get(Transaction, counterpart_id)
-    if counterpart is None:
-        return None
-
-    tx.duplicate_status = DuplicateStatus.duplicate_confirmed.value
-    tx.duplicate_of_transaction_id = counterpart.id
-    tx.duplicate_reason = INTERNAL_TRANSFER_REASON
-    tx.duplicate_score = score
-
-    counterpart.duplicate_status = DuplicateStatus.duplicate_confirmed.value
-    counterpart.duplicate_of_transaction_id = tx.id
-    counterpart.duplicate_reason = INTERNAL_TRANSFER_REASON
-    counterpart.duplicate_score = score
-
-    db.add(counterpart)
-    return counterpart
-
-
-def _load_categories_or_500(db: Session) -> tuple[list[Category], set[int], Category]:
-    categories = (
-        db.execute(select(Category).order_by(Category.id.asc())).scalars().all()
-    )
-    if not categories:
-        raise HTTPException(status_code=500, detail="Categories are not initialized")
-
-    valid_category_ids = {item.id for item in categories}
-    other_category = next(
-        (item for item in categories if item.name.strip().lower() == "other"),
-        None,
-    )
-    if other_category is None:
-        raise HTTPException(
-            status_code=500, detail='Category "Other" is not configured'
-        )
-
-    return categories, valid_category_ids, other_category
-
-
-def _ingest_transactions(
-    db: Session,
-    job: ImportJob,
-    transactions: list[ParsedTransaction],
-    valid_category_ids: set[int],
-    other_category: Category,
-) -> tuple[int, int, int]:
-    job.total_transactions = len(transactions)
-
-    new_transactions = 0
-    duplicate_transactions = 0
-    needs_review_count = 0
-    affected_months: set[date] = set()
-
-    for item in transactions:
-        category_id = item.category_id
-        confidence = float(item.confidence)
-        if category_id not in valid_category_ids:
-            category_id = other_category.id
-            confidence = max(0.0, confidence - CATEGORY_CONFIDENCE_PENALTY)
-
-        normalized_currency = item.currency.strip().upper()
-        normalized_direction = item.direction.strip().lower()
-        fingerprint = build_transaction_fingerprint(
-            booking_date=item.booking_date,
-            amount=item.amount,
-            currency=normalized_currency,
-            direction=normalized_direction,
-            raw_description=item.raw_description,
-            counterparty=item.counterparty,
-        )
-        duplicate_match = detect_duplicate_match(
-            db=db,
-            booking_date=item.booking_date,
-            amount=item.amount,
-            currency=normalized_currency,
-            direction=normalized_direction,
-            raw_description=item.raw_description,
-            counterparty=item.counterparty,
-            fingerprint=fingerprint,
-        )
-
-        if (
-            duplicate_match.status.value == DuplicateStatus.duplicate_confirmed.value
-            and duplicate_match.duplicate_reason != INTERNAL_TRANSFER_REASON
-        ):
-            duplicate_transactions += 1
-            continue
-
-        tx = Transaction(
-            import_job_id=job.id,
-            booking_date=item.booking_date,
-            amount=abs(item.amount),
-            currency=normalized_currency,
-            direction=normalized_direction,
-            counterparty=item.counterparty,
-            raw_description=item.raw_description,
-            normalized_description=_resolve_normalized_description(
-                raw_description=item.raw_description,
-                llm_normalized_description=item.normalized_description,
-            ),
-            category_id=category_id,
-            confidence=confidence,
-            duplicate_status=duplicate_match.status.value,
-            duplicate_of_transaction_id=duplicate_match.duplicate_of_transaction_id,
-            duplicate_reason=duplicate_match.duplicate_reason,
-            duplicate_score=duplicate_match.duplicate_score,
-            fingerprint=fingerprint,
-        )
-        db.add(tx)
-        db.flush()
-        affected_months.add(month_start(tx.booking_date))
-
-        if (
-            duplicate_match.duplicate_reason == INTERNAL_TRANSFER_REASON
-            and duplicate_match.duplicate_of_transaction_id is not None
-        ):
-            counterpart = _link_internal_transfer_pair(
-                db=db,
-                tx=tx,
-                counterpart_id=duplicate_match.duplicate_of_transaction_id,
-                score=duplicate_match.duplicate_score,
-            )
-            if counterpart is not None:
-                affected_months.add(month_start(counterpart.booking_date))
-
-        if duplicate_match.status.value == DuplicateStatus.unique.value:
-            new_transactions += 1
-        elif duplicate_match.status.value == DuplicateStatus.possible_duplicate.value:
-            needs_review_count += 1
-        elif duplicate_match.duplicate_reason == INTERNAL_TRANSFER_REASON:
-            duplicate_transactions += 1
-
-    job.new_transactions = new_transactions
-    job.duplicate_transactions = duplicate_transactions
-    job.needs_review_count = needs_review_count
-    job.status = "needs_review" if needs_review_count > 0 else "done"
-    rebuild_monthly_summaries_for_months(db=db, months=affected_months)
-
-    return new_transactions, duplicate_transactions, needs_review_count
 
 
 @router.get("", response_model=PaginatedImportJobsResponse)
@@ -235,13 +90,51 @@ def list_import_jobs(
     }
 
 
+@router.get(
+    "/{import_job_id}/stream",
+    responses={404: {"model": ErrorResponse}},
+    response_class=StreamingResponse,
+)
+async def stream_import_status(import_job_id: int):
+    with SessionLocal() as db:
+        if db.get(ImportJob, import_job_id) is None:
+            raise HTTPException(status_code=404, detail="Import job not found")
+
+    async def event_generator():
+        elapsed = 0.0
+        last_status = None
+
+        while elapsed < _SSE_TIMEOUT_SECS:
+            with SessionLocal() as db:
+                job = db.get(ImportJob, import_job_id)
+                if job is None:
+                    return
+                current_status = job.status
+                if current_status != last_status:
+                    last_status = current_status
+                    payload = _serialize_import_job(job)
+                    yield f"data: {json.dumps(payload, default=_sse_json_default)}\n\n"
+                is_terminal = current_status in _TERMINAL_STATUSES
+
+            if is_terminal:
+                return
+
+            await asyncio.sleep(_SSE_POLL_INTERVAL)
+            elapsed += _SSE_POLL_INTERVAL
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.post(
     "",
-    response_model=UploadStatementResponse,
+    status_code=202,
+    response_model=EnqueuedImportResponse,
     responses={
         400: {"model": ErrorResponse},
-        500: {"model": ErrorResponse},
-        502: {"model": ErrorResponse},
     },
 )
 async def upload_statement(
@@ -258,54 +151,14 @@ async def upload_statement(
     content = await file.read()
     file_path.write_bytes(content)
 
-    job = ImportJob(filename=file.filename, status="uploaded")
+    job = ImportJob(filename=file.filename, status=ImportJobStatus.uploaded)
     db.add(job)
     db.commit()
     db.refresh(job)
 
-    try:
-        categories, valid_category_ids, other_category = _load_categories_or_500(db)
-        category_pairs = [(item.id, item.name) for item in categories]
+    process_import_job.delay(job.id, str(file_path))
 
-        raw_text = extract_text_with_pypdf(str(file_path))
-        job.raw_text = raw_text
-        job.status = "parsed_text"
-        db.commit()
-
-        parsed = await parse_transactions_from_text(raw_text, categories=category_pairs)
-        job.status = "parsed_transactions"
-        new_transactions, duplicate_transactions, needs_review_count = (
-            _ingest_transactions(
-                db=db,
-                job=job,
-                transactions=parsed.transactions,
-                valid_category_ids=valid_category_ids,
-                other_category=other_category,
-            )
-        )
-        db.commit()
-
-        return {
-            "import_job_id": job.id,
-            "transactions_count": len(parsed.transactions),
-            "new_transactions": new_transactions,
-            "duplicate_transactions": duplicate_transactions,
-            "needs_review_count": needs_review_count,
-        }
-
-    except LLMClientError as e:
-        db.rollback()
-        job.status = "llm_failed"
-        db.add(job)
-        db.commit()
-        raise HTTPException(status_code=502, detail=str(e)) from e
-
-    except Exception as e:
-        db.rollback()
-        job.status = "failed"
-        db.add(job)
-        db.commit()
-        raise HTTPException(status_code=500, detail=f"Import failed: {e}") from e
+    return {"import_job_id": job.id, "status": ImportJobStatus.uploaded}
 
 
 @router.delete(

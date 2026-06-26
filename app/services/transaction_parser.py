@@ -2,8 +2,7 @@ from pathlib import Path
 from collections.abc import Sequence
 
 from app.schemas.transaction import ParsedTransactionsResponse
-from app.services.llm_client import openai_chat_json
-from app.services.json_schema import make_openai_strict_schema
+from app.services.llm_client import make_openai_strict_schema, openai_chat_json
 
 
 MAX_MODEL_INPUT_CHARS = 12000

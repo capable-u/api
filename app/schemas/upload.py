@@ -2,6 +2,10 @@ from datetime import date
 
 from pydantic import AwareDatetime, BaseModel, Field
 
+from app.models.enums import ImportJobStatus
+
+__all__ = ["ImportJobStatus"]
+
 
 class UploadStatementResponse(BaseModel):
     import_job_id: int
@@ -11,10 +15,15 @@ class UploadStatementResponse(BaseModel):
     needs_review_count: int
 
 
+class EnqueuedImportResponse(BaseModel):
+    import_job_id: int
+    status: ImportJobStatus
+
+
 class ImportJobResponse(BaseModel):
     id: int
     filename: str
-    status: str
+    status: ImportJobStatus
     total_transactions: int
     new_transactions: int
     duplicate_transactions: int

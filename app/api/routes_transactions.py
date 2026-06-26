@@ -1,12 +1,13 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.models.enums import DuplicateStatus
+from app.models.enums import DuplicateStatus, ImportJobStatus
 from app.models.import_job import ImportJob
 from app.models.monthly_category_summary import MonthlyCategorySummary
 from app.models.monthly_summary import MonthlySummary
@@ -23,9 +24,17 @@ from app.schemas.transaction import (
     TransactionSummaryResponse,
     TransactionUpdateRequest,
 )
+from app.core.config import settings
+from app.models.category import Category
 from app.services.duplicate_detector import (
     INTERNAL_TRANSFER_REASON,
     detect_duplicate_match,
+)
+from app.services.exchange_rate_service import (
+    ensure_rates_for_currencies,
+    fetch_available_currencies,
+    load_rates_lookup,
+    resolve_amount_base,
 )
 from app.services.fingerprint import build_transaction_fingerprint
 from app.services.monthly_summary_service import (
@@ -55,7 +64,11 @@ def _apply_review_job_counters(
     else:
         job.new_transactions += 1
 
-    job.status = "needs_review" if job.needs_review_count > 0 else "done"
+    job.status = (
+        ImportJobStatus.needs_review
+        if job.needs_review_count > 0
+        else ImportJobStatus.done
+    )
 
 
 def _apply_delete_job_counters(job: ImportJob | None, tx: Transaction) -> None:
@@ -69,7 +82,11 @@ def _apply_delete_job_counters(job: ImportJob | None, tx: Transaction) -> None:
     elif tx.duplicate_status == DuplicateStatus.possible_duplicate.value:
         job.needs_review_count = max(0, job.needs_review_count - 1)
 
-    job.status = "needs_review" if job.needs_review_count > 0 else "done"
+    job.status = (
+        ImportJobStatus.needs_review
+        if job.needs_review_count > 0
+        else ImportJobStatus.done
+    )
 
 
 def _reset_duplicate_metadata(tx: Transaction) -> None:
@@ -431,6 +448,59 @@ def update_transaction(
     if not update_data:
         return _serialize_transaction_full(tx)
 
+    # --- Validate category exists ---
+    if "category_id" in update_data and update_data["category_id"] is not None:
+        if db.get(Category, update_data["category_id"]) is None:
+            raise HTTPException(status_code=404, detail="Category not found")
+
+    # --- Validate currency and ensure rates are available ---
+    if "currency" in update_data and update_data["currency"] is not None:
+        new_currency = update_data["currency"].strip().upper()
+        base_currency = settings.base_currency
+
+        if new_currency != base_currency:
+            try:
+                valid_currencies = fetch_available_currencies()
+            except Exception:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Could not reach exchange rate service to validate currency",
+                )
+
+            if new_currency not in valid_currencies:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unknown currency: {new_currency}",
+                )
+
+            # Fetch rates covering the full transaction history so that any
+            # existing or future transaction in this currency can be converted.
+            earliest_tx_date: date | None = db.scalar(
+                select(func.min(Transaction.booking_date))
+            )
+            range_start = min(
+                earliest_tx_date or tx.booking_date,
+                update_data.get("booking_date") or tx.booking_date,
+            )
+            try:
+                ensure_rates_for_currencies(
+                    db=db,
+                    base=base_currency,
+                    currencies={new_currency},
+                    start_date=range_start,
+                    end_date=datetime.now(tz=timezone.utc).date(),
+                )
+            except httpx.HTTPStatusError as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Exchange rate API error: {exc.response.status_code}",
+                ) from exc
+            except httpx.RequestError as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Could not reach exchange rate service: {exc}",
+                ) from exc
+
     old_month = month_start(tx.booking_date)
     old_internal_counterpart = _get_internal_transfer_counterpart(db, tx)
 
@@ -444,6 +514,11 @@ def update_transaction(
     should_rebuild_fingerprint = any(
         field in update_data for field in fingerprint_changed_fields
     )
+    amount_base_changed_fields = {"amount", "currency", "booking_date"}
+    should_recalculate_amount_base = any(
+        field in update_data for field in amount_base_changed_fields
+    )
+
     summary_changed_fields = {
         "booking_date",
         "amount",
@@ -464,6 +539,20 @@ def update_transaction(
             setattr(tx, field, value.strip().lower())
             continue
         setattr(tx, field, value)
+
+    if should_recalculate_amount_base:
+        base_currency = settings.base_currency
+        target_currencies = {tx.currency} if tx.currency != base_currency else set()
+        rates_lookup = load_rates_lookup(
+            db=db, base=base_currency, currencies=target_currencies
+        )
+        tx.amount_base = resolve_amount_base(
+            amount=tx.amount,
+            currency=tx.currency,
+            booking_date=tx.booking_date,
+            base=base_currency,
+            rates_lookup=rates_lookup,
+        )
 
     if should_rebuild_fingerprint:
         tx.fingerprint = build_transaction_fingerprint(

@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5.4-mini"
     openai_base_url: str = "https://api.openai.com/v1"
 
+    base_currency: str = "EUR"
+
+    redis_url: str = "redis://redis:6379/0"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

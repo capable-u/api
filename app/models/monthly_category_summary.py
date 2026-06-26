@@ -10,7 +10,7 @@ from app.models.base import Base
 
 class MonthlyCategorySummary(Base):
     __tablename__ = "monthly_category_summary"
-    __table_args__ = (UniqueConstraint("month", "category_id", "currency"),)
+    __table_args__ = (UniqueConstraint("month", "category_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
 

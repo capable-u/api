@@ -1,9 +1,7 @@
-from sqlalchemy import inspect
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 
 from app.core.db import SessionLocal
 from app.models.category import Category
-
 
 DEFAULT_CATEGORIES = [
     "Salary",
